@@ -3,143 +3,45 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
 # Environment variables
 .env
 .env.local
 .env.production
-.env.development
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS generated files
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
 # Logs
 logs/
 *.log
-log/
 
-# Temporary files
-tmp/
-temp/
-*.tmp
-*.temp
+# Next.js (remove if present)
+.next/
+out/
 
-# Cache directory
+# Vercel
+.vercel/
+
+# Cache directories
 cache/
-.cache/
+temp/
 
-# Output files
-output/
+# Build outputs
 dist/
 build/
 
-# Testing
+# Test coverage
 coverage/
 .nyc_output/
 
 # TypeScript
 *.tsbuildinfo
 .tsc-cache/
-
-# Package manager files
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# Backup files
-*.bak
-*.backup
-backup/
-
-# Session data
-sessions/
-
-# Database files
-*.db
-*.sqlite
-*.sqlite3
-
-# Generated documentation
-docs/generated/
-api-docs/
-
-# Performance profiling
-*.cpuprofile
-*.heapsnapshot
-
-# Security certificates (if any)
-*.pem
-*.key
-*.crt
-
-# Python (if using any Python scripts)
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-venv/
-env/
-
-# Compressed files
-*.zip
-*.tar.gz
-*.rar
-*.7z
-
-# Media files (if not needed in repo)
-*.mp4
-*.avi
-*.mov
-*.mp3
-*.wav
-
-# Excel temporary files
-~$*.xlsx
-~$*.xls
-
-# MacOS specific
-.AppleDouble
-.LSOverride
-Icon
-.DocumentRevisions-V100
-.fseventsd
-.TemporaryItems
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# Windows specific
-Desktop.ini
-$RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
-
-# Linux specific
-.directory
-.Trash-*
-.nfs*.next/
-.next/
