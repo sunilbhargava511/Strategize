@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Backtesting Tool</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px 0; cursor: pointer; }
+        .result { margin-top: 20px; padding: 10px; background: #f0f0f0; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Stock Backtesting Tool</h1>
+    
+    <div>
+        <h2>API Health Check</h2>
+        <button onclick="checkHealth()">Check API Status</button>
+        <div id="health-result"></div>
+    </div>
+    
+    <div>
+        <h2>Run Backtest</h2>
+        <button onclick="runBacktest()">Run Backtest (2010-2024)</button>
+        <div id="backtest-result"></div>
+    </div>
+
+    <script>
+        async function checkHealth() {
+            const resultDiv = document.getElementById('health-result');
+            resultDiv.innerHTML = 'Checking...';
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                resultDiv.innerHTML = `<div class="success">API Status: ${data.status}<br>Environment: ${data.environment}</div>`;
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function runBacktest() {
+            const resultDiv = document.getElementById('backtest-result');
+            resultDiv.innerHTML = 'Running backtest... This may take a minute...';
+            
+            try {
+                const response = await fetch('/api/backtest', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        startYear: 2010,
+                        endYear: 2024,
+                        initialInvestment: 1000000
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = '<div class="success">Backtest completed! Check console for results.</div>';
+                    console.log('Backtest Results:', data);
+                } else {
+                    resultDiv.innerHTML = `<div class="error">Error: ${data.error}</div>`;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
