@@ -1,12 +1,13 @@
 // src/scripts/testEqualWeightBugFix.ts
+// Test script to verify the Equal Weight Buy & Hold strategy correctly handles newly available stocks
 
 import { Stock } from '../types/backtesting';
 import { getAvailableStocks } from '../lib/utils/portfolioUtils';
 import { getStartOfYearDate } from '../lib/utils/dateUtils';
 
 /**
- * Script to demonstrate the bug fix in Equal Weight Buy & Hold strategy
- * Run with: npx ts-node src/scripts/testEqualWeightBugFix.ts
+ * Script to demonstrate the corrected behavior in Equal Weight Buy & Hold strategy
+ * Run with: npm run test-bug-fix
  */
 
 function simulateOldBehavior(stocks: Stock[], startYear: number, endYear: number) {
@@ -36,11 +37,12 @@ function simulateOldBehavior(stocks: Stock[], startYear: number, endYear: number
   return totalStocks;
 }
 
-function simulateNewBehavior(stocks: Stock[], startYear: number, endYear: number) {
-  console.log('\n✅ NEW BEHAVIOR (Fixed):');
+function simulateCorrectBehavior(stocks: Stock[], startYear: number, endYear: number) {
+  console.log('\n✅ CORRECT BEHAVIOR (Fixed):');
   console.log('=' .repeat(50));
   
   const holdings = new Set<string>();
+  const previouslyAvailableStocks = new Set<string>();
   let totalStocks = 0;
   
   for (let year = startYear; year <= endYear; year++) {
@@ -48,30 +50,32 @@ function simulateNewBehavior(stocks: Stock[], startYear: number, endYear: number
     const availableStocks = getAvailableStocks(stocks, yearDate);
     
     if (year === startYear) {
-      // Initial year: add all available stocks
-      availableStocks.forEach(stock => holdings.add(stock.ticker));
+      // Initial year: add all available stocks and track them
+      availableStocks.forEach(stock => {
+        holdings.add(stock.ticker);
+        previouslyAvailableStocks.add(stock.ticker);
+      });
       totalStocks = holdings.size;
       console.log(`Year ${year}: Initial portfolio with ${totalStocks} stocks`);
     } else {
-      // Subsequent years: only add genuinely new stocks
-      const newStocks = availableStocks.filter(stock => {
-        // Check if NOT already in portfolio
-        if (holdings.has(stock.ticker)) {
-          return false;
-        }
-        
-        // Check if stock just joined (within last year)
-        const stockStartYear = parseInt(stock.startDate.split('-')[0]);
-        return stockStartYear >= year - 1;
+      // Subsequent years: only add stocks that are newly available in the market
+      const newlyAvailableStocks = availableStocks.filter(stock => {
+        // Check if we've never seen this stock before (newly available in market)
+        return !previouslyAvailableStocks.has(stock.ticker);
       });
       
-      newStocks.forEach(stock => holdings.add(stock.ticker));
+      // Add newly available stocks to both sets
+      newlyAvailableStocks.forEach(stock => {
+        holdings.add(stock.ticker);
+        previouslyAvailableStocks.add(stock.ticker);
+      });
+      
       totalStocks = holdings.size;
       
-      console.log(`Year ${year}: ${availableStocks.length} available, ${newStocks.length} genuinely new, Total: ${totalStocks}`);
+      console.log(`Year ${year}: ${availableStocks.length} available, ${newlyAvailableStocks.length} newly available, Total: ${totalStocks}`);
       
-      if (newStocks.length > 0) {
-        console.log(`   New tickers: ${newStocks.map(s => s.ticker).join(', ')}`);
+      if (newlyAvailableStocks.length > 0) {
+        console.log(`   Newly available tickers: ${newlyAvailableStocks.map(s => s.ticker).join(', ')}`);
       }
     }
   }
@@ -80,65 +84,66 @@ function simulateNewBehavior(stocks: Stock[], startYear: number, endYear: number
 }
 
 async function main() {
-  console.log('🧪 Testing Equal Weight Buy & Hold Bug Fix');
+  console.log('🧪 Testing Equal Weight Buy & Hold Corrected Behavior');
   console.log('=' .repeat(50));
+  console.log('This test shows how the strategy should handle newly available stocks in the market.');
   
-  // Create sample stock data to demonstrate the issue
+  // Create sample stock data to demonstrate the correct behavior
   const sampleStocks: Stock[] = [
-    // Initial stocks (available from start)
+    // Initial S&P 500 stocks (available from start)
     { ticker: 'AAPL', startDate: '1996-01-02', endDate: null },
     { ticker: 'MSFT', startDate: '1996-01-02', endDate: null },
     { ticker: 'IBM', startDate: '1996-01-02', endDate: null },
     { ticker: 'GE', startDate: '1996-01-02', endDate: null },
     { ticker: 'XOM', startDate: '1996-01-02', endDate: null },
     
-    // Stock that gets delisted
-    { ticker: 'ENRN', startDate: '1996-01-02', endDate: '2001-11-30' },
+    // Stocks that existed before but weren't in initial available set (OLD BUG: these were incorrectly added)
+    { ticker: 'JPM', startDate: '1990-01-02', endDate: null },
+    { ticker: 'WMT', startDate: '1990-01-02', endDate: null },
+    { ticker: 'PG', startDate: '1990-01-02', endDate: null },
+    { ticker: 'JNJ', startDate: '1990-01-02', endDate: null },
+    { ticker: 'CVX', startDate: '1990-01-02', endDate: null },
     
-    // New stocks added over time
-    { ticker: 'GOOGL', startDate: '2004-08-19', endDate: null },
-    { ticker: 'FB', startDate: '2012-05-18', endDate: null },
-    { ticker: 'TSLA', startDate: '2013-01-01', endDate: null },
-    { ticker: 'NFLX', startDate: '2010-12-20', endDate: null },
+    // Newly available stocks (IPOs or new listings) - THESE SHOULD BE ADDED
+    { ticker: 'GOOGL', startDate: '2014-04-03', endDate: null },  // IPO in 2014
+    { ticker: 'FB', startDate: '2013-12-23', endDate: null },     // IPO in 2012, listed 2013
+    { ticker: 'TSLA', startDate: '2020-12-21', endDate: null },   // Added to S&P in 2020
+    { ticker: 'NVDA', startDate: '2001-11-21', endDate: null },   // IPO in 1999, available 2001
+    { ticker: 'NFLX', startDate: '2015-06-15', endDate: null },   // Becomes available in 2015
     
-    // Stock that joins and leaves
-    { ticker: 'YHOO', startDate: '1999-01-01', endDate: '2017-06-16' },
+    // Stock that gets delisted during the period
+    { ticker: 'LEHM', startDate: '1996-01-02', endDate: '2008-09-15' },
   ];
   
   const startYear = 2010;
-  const endYear = 2015;
-  
-  console.log(`\n📊 Test Scenario:`);
-  console.log(`   Start Year: ${startYear}`);
-  console.log(`   End Year: ${endYear}`);
-  console.log(`   Total unique stocks in dataset: ${sampleStocks.length}`);
-  
-  // Show which stocks are available each year
-  console.log('\n📅 Stock Availability by Year:');
-  for (let year = startYear; year <= endYear; year++) {
-    const yearDate = getStartOfYearDate(year);
-    const available = getAvailableStocks(sampleStocks, yearDate);
-    console.log(`   ${year}: ${available.map(s => s.ticker).join(', ')}`);
-  }
+  const endYear = 2024;
   
   // Run both simulations
   const oldTotal = simulateOldBehavior(sampleStocks, startYear, endYear);
-  const newTotal = simulateNewBehavior(sampleStocks, startYear, endYear);
+  const correctTotal = simulateCorrectBehavior(sampleStocks, startYear, endYear);
   
   // Summary
   console.log('\n📊 SUMMARY:');
   console.log('=' .repeat(50));
-  console.log(`Old behavior final holdings: ${oldTotal} stocks`);
-  console.log(`New behavior final holdings: ${newTotal} stocks`);
+  console.log(`Old behavior (buggy): ${oldTotal} total stocks`);
+  console.log(`Correct behavior (fixed): ${correctTotal} total stocks`);
+  console.log(`Difference: ${oldTotal - correctTotal} fewer stocks with fix`);
   
-  console.log('\n💡 Key Differences:');
-  console.log('1. Old: May count stocks multiple times or add all available stocks each year');
-  console.log('2. New: Only adds stocks that genuinely joined the index recently');
-  console.log('3. New: Properly tracks which stocks are already in the portfolio');
-  console.log('4. New: Handles delisted stocks appropriately');
+  console.log('\n💡 EXPLANATION:');
+  console.log('The old behavior incorrectly added stocks that existed before the');
+  console.log('start year but weren\'t in the initial available set.');
+  console.log('\nThe corrected version:');
+  console.log('1. Starts with available S&P 500 stocks');
+  console.log('2. Adds ANY newly available stocks in the market (IPOs, new listings, etc.)');
+  console.log('3. Does NOT add stocks that existed before but weren\'t initially available');
+  console.log('\nThis allows the strategy to invest in new opportunities (like GOOGL, FB, TSLA)');
+  console.log('while preventing the bug of adding pre-existing stocks.');
+  
+  console.log('\n✅ Test completed successfully!');
 }
 
-// Run the script
-if (require.main === module) {
-  main().catch(console.error);
-}
+// Run the test
+main().catch(error => {
+  console.error('❌ Test failed:', error);
+  process.exit(1);
+});

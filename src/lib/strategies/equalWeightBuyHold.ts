@@ -1,4 +1,5 @@
-// src/lib/strategies/equalWeightBuyHold.ts (Fixed version)
+// src/lib/strategies/equalWeightBuyHold.ts
+// Equal Weight Buy & Hold Strategy - Corrected to buy ANY newly available stocks
 
 import { 
   StrategyResult, 
@@ -18,18 +19,17 @@ import {
 import { getStartOfYearDate, getYearsInRange, getYearsBetweenDates } from '../utils/dateUtils';
 
 /**
- * Equal Weight Buy and Hold Strategy (FIXED VERSION)
+ * Equal Weight Buy and Hold Strategy
  * 
  * Rules:
- * 1. Start with equal weight among all initially available stocks
- * 2. When new stocks become available at start of each year:
+ * 1. Start with equal weight among all initially available stocks (S&P 500 members)
+ * 2. When new stocks become available in the market at start of each year:
  *    - Calculate their equal weight allocation based on current portfolio size
- *    - Purchase the new stocks
+ *    - Purchase the new stocks (regardless of S&P 500 membership)
  *    - Reduce existing holdings proportionally
  * 3. No rebalancing - just hold positions
  * 4. Remove stocks that are delisted
  */
-
 export async function runEqualWeightBuyHold(
   stocks: Stock[],
   startYear: number,
@@ -42,6 +42,9 @@ export async function runEqualWeightBuyHold(
   const yearlySnapshots: PortfolioSnapshot[] = [];
   let currentHoldings: PortfolioHolding[] = [];
   let cash = 0;
+  
+  // Track which stocks we've seen before (to identify truly new stocks)
+  const previouslyAvailableStocks = new Set<string>();
 
   // Initialize portfolio in start year
   const startDate = getStartOfYearDate(startYear);
@@ -55,6 +58,7 @@ export async function runEqualWeightBuyHold(
     const priceData = await priceDataFetcher(stock.ticker, startDate);
     if (priceData) {
       initialPriceData.push(priceData);
+      previouslyAvailableStocks.add(stock.ticker);
     }
   }
 
@@ -84,133 +88,129 @@ export async function runEqualWeightBuyHold(
   });
 
   // Record initial snapshot
-  const initialTotalValue = currentHoldings.reduce((sum, h) => sum + h.value, 0) + cash;
+  const initialValue = calculatePortfolioValue(currentHoldings, cash);
   yearlySnapshots.push({
     date: startDate,
-    totalValue: initialTotalValue,
+    totalValue: initialValue,
     holdings: [...currentHoldings],
     cash
   });
 
-  console.log(`  💰 Initial portfolio value: $${initialTotalValue.toLocaleString()}`);
-  console.log(`  📊 Initial holdings: ${currentHoldings.length} stocks`);
-
   // Process each subsequent year
-  const yearsArray = getYearsInRange(startYear + 1, endYear);
+  const years = getYearsInRange(startYear + 1, endYear);
   
-  for (const year of yearsArray) {
-    console.log(`📅 ${year}: Processing year...`);
-    
+  for (const year of years) {
     const yearDate = getStartOfYearDate(year);
-    const availableStocks = getAvailableStocks(stocks, yearDate);
+    const availableThisYear = getAvailableStocks(stocks, yearDate);
     
-    // Update prices for existing holdings and remove delisted stocks
-    const stillActiveHoldings: PortfolioHolding[] = [];
-    const currentPriceData: PriceData[] = [];
+    console.log(`\n📅 ${year}: Processing year`);
+    
+    // Find stocks that are newly available in the market (not seen before)
+    const newStocks = availableThisYear.filter(stock => {
+      // Check if we've never seen this stock before
+      return !previouslyAvailableStocks.has(stock.ticker);
+    });
+    
+    // Add newly available stocks to our tracking set
+    newStocks.forEach(stock => previouslyAvailableStocks.add(stock.ticker));
+    
+    if (newStocks.length > 0) {
+      console.log(`  🆕 Found ${newStocks.length} newly available stocks: ${newStocks.map(s => s.ticker).join(', ')}`);
+      
+      // Get current portfolio value before adding new stocks
+      const pricePromises = currentHoldings.map(async (holding) => {
+        const priceData = await priceDataFetcher(holding.ticker, yearDate);
+        return priceData ? holding.shares * priceData.adjustedPrice : 0;
+      });
+      
+      const holdingValues = await Promise.all(pricePromises);
+      const currentPortfolioValue = holdingValues.reduce((sum, value) => sum + value, 0) + cash;
+      
+      // Calculate equal allocation for each new stock
+      const totalStocks = currentHoldings.length + newStocks.length;
+      const targetAllocationPerStock = currentPortfolioValue / totalStocks;
+      const fundsNeededForNewStocks = targetAllocationPerStock * newStocks.length;
+      
+      // Reduce existing holdings proportionally to free up funds
+      const reductionFactor = 1 - (fundsNeededForNewStocks / (currentPortfolioValue - cash));
+      
+      // Update existing holdings (reduce proportionally)
+      for (let i = 0; i < currentHoldings.length; i++) {
+        const holding = currentHoldings[i];
+        const priceData = await priceDataFetcher(holding.ticker, yearDate);
+        
+        if (priceData) {
+          const currentValue = holding.shares * priceData.adjustedPrice;
+          const newValue = currentValue * reductionFactor;
+          const newShares = Math.floor(newValue / priceData.adjustedPrice);
+          const actualNewValue = newShares * priceData.adjustedPrice;
+          
+          cash += currentValue - actualNewValue; // Add cash from sold shares
+          
+          currentHoldings[i] = {
+            ...holding,
+            shares: newShares,
+            value: actualNewValue
+          };
+        }
+      }
+      
+      // Buy new stocks with available funds
+      for (const newStock of newStocks) {
+        const priceData = await priceDataFetcher(newStock.ticker, yearDate);
+        
+        if (priceData && priceData.adjustedPrice > 0) {
+          const allocation = targetAllocationPerStock;
+          const shares = calculateShares(allocation, priceData.adjustedPrice);
+          const actualValue = shares * priceData.adjustedPrice;
+          
+          if (shares > 0 && cash >= actualValue) {
+            currentHoldings.push({
+              ticker: newStock.ticker,
+              shares,
+              value: actualValue,
+              weight: 0, // Will be recalculated
+              marketCap: priceData.marketCap
+            });
+            
+            cash -= actualValue;
+          }
+        }
+      }
+    }
+    
+    // Remove delisted stocks
+    const activeStockTickers = new Set(availableThisYear.map(s => s.ticker));
+    const beforeCount = currentHoldings.length;
+    currentHoldings = currentHoldings.filter(holding => activeStockTickers.has(holding.ticker));
+    const removedCount = beforeCount - currentHoldings.length;
+    
+    if (removedCount > 0) {
+      console.log(`  ❌ Removed ${removedCount} delisted stocks`);
+    }
+    
+    // Update portfolio values for the year
+    const updatedHoldings: PortfolioHolding[] = [];
+    let totalValue = cash;
     
     for (const holding of currentHoldings) {
       const priceData = await priceDataFetcher(holding.ticker, yearDate);
+      
       if (priceData) {
-        // Stock is still active
-        currentPriceData.push(priceData);
-        stillActiveHoldings.push({
+        const value = holding.shares * priceData.adjustedPrice;
+        updatedHoldings.push({
           ...holding,
-          value: holding.shares * priceData.adjustedPrice
+          value,
+          marketCap: priceData.marketCap
         });
-      } else {
-        // Stock was delisted - remove from portfolio
-        console.log(`  ❌ ${holding.ticker} delisted - removing from portfolio`);
-        // Note: In a real scenario, we'd get the last trading price and convert to cash
-        // For now, we'll assume the position value goes to zero (worst case)
+        totalValue += value;
       }
     }
     
-    currentHoldings = stillActiveHoldings;
-
-    const currentPortfolioValue = currentHoldings.reduce((sum, h) => sum + h.value, 0);
-    const totalValue = currentPortfolioValue + cash;
-
-    // Find genuinely new stocks (not in our portfolio and newly available)
-    const currentTickers = new Set(currentHoldings.map(h => h.ticker));
-    const newStocks = availableStocks.filter(stock => {
-      // Check if this stock is NOT already in our portfolio
-      if (currentTickers.has(stock.ticker)) {
-        return false;
-      }
-      
-      // Check if this stock just became available this year or last year
-      // (allowing for slight date mismatches)
-      const stockStartYear = parseInt(stock.startDate.split('-')[0]);
-      return stockStartYear >= year - 1;
-    });
-
-    if (newStocks.length > 0) {
-      console.log(`  📈 Found ${newStocks.length} genuinely new stocks to add`);
-      
-      // Get price data for new stocks
-      const newStockPriceData: PriceData[] = [];
-      for (const stock of newStocks) {
-        const priceData = await priceDataFetcher(stock.ticker, yearDate);
-        if (priceData) {
-          newStockPriceData.push(priceData);
-          console.log(`    ➕ Adding new stock: ${stock.ticker}`);
-        }
-      }
-
-      if (newStockPriceData.length > 0) {
-        // Calculate allocation for new stocks
-        // New methodology: Give new stocks equal weight with existing ones
-        const totalStockCount = currentHoldings.length + newStockPriceData.length;
-        const targetWeightPerStock = 1 / totalStockCount;
-        const totalNewStockWeight = newStockPriceData.length * targetWeightPerStock;
-        
-        // We need to free up capital for new stocks by reducing existing positions
-        const reductionFactor = 1 - totalNewStockWeight;
-        
-        // Sell portion of existing holdings to raise cash
-        currentHoldings.forEach(holding => {
-          const targetShares = Math.floor(holding.shares * reductionFactor);
-          const sharesToSell = holding.shares - targetShares;
-          
-          if (sharesToSell > 0) {
-            const currentPrice = currentPriceData.find(p => p.ticker === holding.ticker);
-            if (currentPrice) {
-              const saleProceeds = sharesToSell * currentPrice.adjustedPrice;
-              cash += saleProceeds;
-              holding.shares = targetShares;
-              holding.value = holding.shares * currentPrice.adjustedPrice;
-              console.log(`    💸 Sold ${sharesToSell} shares of ${holding.ticker} for $${saleProceeds.toFixed(2)}`);
-            }
-          }
-        });
-
-        // Buy new stocks with available cash
-        const cashPerNewStock = (totalValue * targetWeightPerStock);
-        
-        newStockPriceData.forEach(priceData => {
-          const targetInvestment = Math.min(cashPerNewStock, cash);
-          const shares = calculateShares(targetInvestment, priceData.adjustedPrice);
-          const cost = shares * priceData.adjustedPrice;
-          
-          if (shares > 0 && cost <= cash) {
-            cash -= cost;
-            currentHoldings.push({
-              ticker: priceData.ticker,
-              shares,
-              value: cost,
-              weight: targetWeightPerStock,
-              marketCap: priceData.marketCap
-            });
-            console.log(`    📈 Bought ${shares} shares of ${priceData.ticker} for $${cost.toFixed(2)}`);
-          }
-        });
-      }
-    } else {
-      console.log(`  ℹ️  No new stocks to add this year`);
-    }
-
+    currentHoldings = updatedHoldings;
+    
     // Update weights based on current values
-    const newTotalValue = currentHoldings.reduce((sum, h) => sum + h.value, 0) + cash;
+    const newTotalValue = calculatePortfolioValue(currentHoldings, cash);
     currentHoldings = currentHoldings.map(holding => ({
       ...holding,
       weight: newTotalValue > 0 ? holding.value / newTotalValue : 0
@@ -303,14 +303,14 @@ export function getEqualWeightBuyHoldDescription(): string {
   return `
     Equal Weight Buy & Hold Strategy:
     
-    1. Initially invests equal amounts in all available stocks
-    2. When new stocks join the index, allocates equal weight to them
+    1. Initially invests equal amounts in all available S&P 500 stocks
+    2. When new stocks become available in the market, allocates equal weight to them
     3. Reduces existing holdings proportionally to make room for new stocks
     4. Removes delisted stocks from the portfolio
     5. No periodic rebalancing - positions grow/shrink with market movements
-    6. Only adds stocks that are genuinely new to the S&P 500
+    6. Buys ANY newly available stocks, not just S&P 500 members
     
     This strategy provides diversification benefits while minimizing transaction costs
-    by avoiding frequent rebalancing.
+    by avoiding frequent rebalancing and capturing new market opportunities.
   `;
 }

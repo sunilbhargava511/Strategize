@@ -1,0 +1,8 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/api/backtesting/route": "app/api/backtesting/route.js",
+  "/api/market-cap/route": "app/api/market-cap/route.js",
+  "/api/spy-data/route": "app/api/spy-data/route.js",
+  "/backtesting/page": "app/backtesting/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js"
+}
