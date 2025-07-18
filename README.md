@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Stock Market Backtesting Tool
 
-## Getting Started
+A comprehensive backtesting application that compares different investment strategies using historical S&P 500 data.
 
-First, run the development server:
+## Features
 
+- **Multiple Strategy Support**:
+  - Equal Weight Buy & Hold
+  - Market Cap Weighted Buy & Hold
+  - Equal Weight Rebalanced Annually
+  - Market Cap Weighted Rebalanced Annually
+  - SPY Benchmark comparison
+
+- **Real-time Market Data**: Fetches current and historical data via EOD Historical Data API
+- **Interactive Dashboard**: Real-time strategy comparison and visualization
+- **Performance Metrics**: Total return, annualized return, and detailed year-by-year analysis
+
+## Known Issues
+
+⚠️ **Equal Weight Buy & Hold Bug**: Currently adds 5 new stocks each year instead of holding initial positions. This inflates the performance metrics. Fix pending.
+
+## Tech Stack
+
+- **Backend**: Node.js, Express
+- **Frontend**: HTML, CSS, JavaScript
+- **Data Source**: EOD Historical Data API
+- **Charts**: Chart.js
+
+## Prerequisites
+
+- Node.js (v14 or higher)
+- NPM or Yarn
+- EOD Historical Data API key
+
+## Installation
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/sunilbhargava511/stock-backtesting-tool.git
+cd stock-backtesting-tool
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Create a `.env` file in the root directory:
+```env
+PORT=3001
+EOD_API_KEY=your_api_key_here
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Usage
 
-## Learn More
+1. Start the server:
+```bash
+npm start
+```
 
-To learn more about Next.js, take a look at the following resources:
+2. Open your browser and navigate to:
+```
+http://localhost:3001
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Click "Run Backtest" to execute all strategies
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Performance Results (2010-2024)
 
-## Deploy on Vercel
+| Strategy | Total Return | Annual Return |
+|----------|--------------|---------------|
+| Equal Weight Rebalanced | 4,998.60% | 32.45% |
+| Equal Weight Buy & Hold* | 3,841.85% | 30.03% |
+| Market Cap Weighted Rebalanced | 1,676.94% | 22.84% |
+| Market Cap Weighted Buy & Hold | 1,658.07% | 22.74% |
+| SPY Benchmark | 441.03% | 12.83% |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+*Note: Equal Weight Buy & Hold results are inflated due to the known bug
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

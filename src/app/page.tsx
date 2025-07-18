@@ -1,103 +1,77 @@
-import Image from "next/image";
+import Link from 'next/link';
+import { TrendingUp, BarChart3, DollarSign, Target } from 'lucide-react';
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="max-w-6xl mx-auto px-6 py-12">
+        <div className="text-center mb-12">
+          <div className="flex items-center justify-center gap-3 mb-6">
+            <TrendingUp className="h-12 w-12 text-blue-600" />
+            <h1 className="text-4xl font-bold text-gray-900">Portfolio Backtesting</h1>
+          </div>
+          <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+            Compare investment strategies using historical S&P 500 data. Test equal weight vs market cap weighted approaches, 
+            and buy & hold vs rebalanced strategies.
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <BarChart3 className="h-8 w-8 text-blue-600 mx-auto mb-3" />
+            <h3 className="font-semibold text-gray-900 mb-2">Four Strategies</h3>
+            <p className="text-sm text-gray-600">Equal weight & market cap weighted, both buy & hold and rebalanced</p>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <Target className="h-8 w-8 text-green-600 mx-auto mb-3" />
+            <h3 className="font-semibold text-gray-900 mb-2">SPY Benchmark</h3>
+            <p className="text-sm text-gray-600">Compare all strategies against SPY ETF performance</p>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <DollarSign className="h-8 w-8 text-purple-600 mx-auto mb-3" />
+            <h3 className="font-semibold text-gray-900 mb-2">Historical Data</h3>
+            <p className="text-sm text-gray-600">Uses real S&P 500 constituent data from 1996-2025</p>
+          </div>
+          
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <TrendingUp className="h-8 w-8 text-orange-600 mx-auto mb-3" />
+            <h3 className="font-semibold text-gray-900 mb-2">Excel Reports</h3>
+            <p className="text-sm text-gray-600">Download comprehensive Excel reports with detailed analytics</p>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <Link
+            href="/backtesting"
+            className="inline-flex items-center gap-3 px-8 py-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-lg font-medium shadow-lg"
+          >
+            <TrendingUp className="h-6 w-6" />
+            Start Backtesting
+          </Link>
+        </div>
+
+        <div className="mt-16 bg-white rounded-lg shadow-md p-8">
+          <h2 className="text-2xl font-bold text-gray-900 mb-6">Available Strategies</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900">Buy & Hold Strategies</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>• <strong>Equal Weight Buy & Hold:</strong> Start equal, add new stocks proportionally</p>
+                <p>• <strong>Market Cap Buy & Hold:</strong> Weight by market cap, add by market cap</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gray-900">Rebalanced Strategies</h3>
+              <div className="space-y-2 text-sm text-gray-600">
+                <p>• <strong>Equal Weight Rebalanced:</strong> Annual rebalancing to equal weights</p>
+                <p>• <strong>Market Cap Rebalanced:</strong> Annual rebalancing to market cap weights</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
