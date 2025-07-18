@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "framework": null,
+  "buildCommand": "echo 'No build needed'",
+  "outputDirectory": ".",
   "builds": [
     {
       "src": "server.js",
@@ -7,10 +10,6 @@
     }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/server.js"
-    },
     {
       "src": "/(.*)",
       "dest": "/server.js"
