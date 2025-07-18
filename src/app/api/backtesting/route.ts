@@ -1,13 +1,16 @@
+// src/app/api/backtesting/route.ts (Updated with cache)
+
 import { NextRequest, NextResponse } from 'next/server';
 import { BacktestConfig, runAllStrategies, validateBacktestConfig } from '../../../lib/strategies/strategyRunner';
 import { PriceData, SPYData, Stock } from '../../../types/backtesting';
+import { getHistoricalDataCache } from '../../../lib/cache/historicalDataCache';
 
 // Rate limiting configuration
 const RATE_LIMIT_DELAY = parseInt(process.env.BACKTEST_RATE_LIMIT_MS || '100');
 const MAX_CONCURRENT_REQUESTS = parseInt(process.env.BACKTEST_MAX_CONCURRENT_REQUESTS || '5');
 
 /**
- * Main backtesting API endpoint
+ * Main backtesting API endpoint with caching
  */
 export async function POST(request: NextRequest) {
   try {
@@ -26,6 +29,11 @@ export async function POST(request: NextRequest) {
     console.log(`📅 Period: ${config.startYear} - ${config.endYear}`);
     console.log(`📊 Strategies: ${config.strategies.join(', ')}`);
     console.log(`💰 Initial Investment: $${config.initialInvestment.toLocaleString()}`);
+
+    // Get cache instance
+    const cache = getHistoricalDataCache();
+    const cacheStats = cache.getStats();
+    console.log(`📦 Cache stats: ${cacheStats.totalRecords} records, ${cacheStats.uniqueTickers} tickers`);
 
     // Create a streaming response
     const stream = new ReadableStream({
@@ -53,8 +61,11 @@ export async function POST(request: NextRequest) {
           // Initialize progress
           sendProgress(1, 10, 'Initializing backtesting environment...');
 
-          // Create price data fetcher with rate limiting
+          // Create price data fetcher with caching
           let requestCount = 0;
+          let cacheHits = 0;
+          let cacheMisses = 0;
+          
           const priceDataFetcher = async (ticker: string, date: string): Promise<PriceData | null> => {
             try {
               requestCount++;
@@ -62,10 +73,31 @@ export async function POST(request: NextRequest) {
                 sendProgress(
                   Math.min(2 + Math.floor(requestCount / 100), 8), 
                   10, 
-                  `Fetching price data... (${requestCount} requests)`
+                  `Fetching price data... (${requestCount} requests, ${cacheHits} cache hits)`
                 );
               }
 
+              // Check cache first
+              const cached = cache.get(ticker, date);
+              if (cached && !cached.isDelisted) {
+                cacheHits++;
+                return {
+                  ticker: cached.ticker,
+                  date: cached.date,
+                  price: cached.price,
+                  adjustedPrice: cached.adjustedPrice,
+                  sharesOutstanding: cached.sharesOutstanding,
+                  marketCap: cached.marketCap
+                };
+              } else if (cached && cached.isDelisted) {
+                // Stock was delisted, return null
+                cacheHits++;
+                return null;
+              }
+
+              // Cache miss - fetch from API
+              cacheMisses++;
+              
               // Add rate limiting delay
               if (RATE_LIMIT_DELAY > 0) {
                 await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY));
@@ -81,6 +113,19 @@ export async function POST(request: NextRequest) {
 
               if (!response.ok) {
                 console.warn(`Failed to fetch data for ${ticker} on ${date}: ${response.status}`);
+                
+                // Cache the failure
+                cache.set({
+                  ticker,
+                  date,
+                  price: 0,
+                  adjustedPrice: 0,
+                  sharesOutstanding: 0,
+                  marketCap: 0,
+                  lastUpdated: new Date().toISOString(),
+                  isDelisted: true
+                });
+                
                 return null;
               }
 
@@ -91,7 +136,7 @@ export async function POST(request: NextRequest) {
                 return null;
               }
 
-              return {
+              const priceData: PriceData = {
                 ticker: data.ticker,
                 date: data.date,
                 price: data.price,
@@ -99,13 +144,27 @@ export async function POST(request: NextRequest) {
                 sharesOutstanding: data.shares_outstanding,
                 marketCap: data.market_cap || (data.price * data.shares_outstanding)
               };
+
+              // Cache the successful result
+              cache.set({
+                ticker: priceData.ticker,
+                date: priceData.date,
+                price: priceData.price,
+                adjustedPrice: priceData.adjustedPrice,
+                sharesOutstanding: priceData.sharesOutstanding,
+                marketCap: priceData.marketCap,
+                lastUpdated: new Date().toISOString(),
+                isDelisted: false
+              });
+
+              return priceData;
             } catch (error) {
               console.error(`Error fetching data for ${ticker} on ${date}:`, error);
               return null;
             }
           };
 
-          // Create SPY data fetcher
+          // Create SPY data fetcher with caching
           const spyDataFetcher = async (startYear: number, endYear: number): Promise<SPYData[]> => {
             sendProgress(3, 10, 'Fetching SPY benchmark data...');
             
@@ -135,6 +194,11 @@ export async function POST(request: NextRequest) {
             spyDataFetcher
           );
 
+          // Save cache after backtest
+          cache.flush();
+          
+          console.log(`📊 Cache performance: ${cacheHits} hits, ${cacheMisses} misses (${((cacheHits / (cacheHits + cacheMisses)) * 100).toFixed(1)}% hit rate)`);
+          
           sendProgress(10, 10, 'Backtest completed successfully!');
           
           // Send final results
@@ -165,12 +229,22 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Get S&P 500 historical constituents
+ * Cache management endpoints
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
+
+    if (action === 'cache-stats') {
+      const cache = getHistoricalDataCache();
+      const stats = cache.getStats();
+      
+      return NextResponse.json({
+        ...stats,
+        message: 'Cache statistics retrieved successfully'
+      });
+    }
 
     if (action === 'sp500-stocks') {
       // Load S&P 500 historical data from CSV
@@ -209,9 +283,30 @@ export async function GET(request: NextRequest) {
     );
 
   } catch (error) {
-    console.error('Error loading S&P 500 data:', error);
+    console.error('Error in GET handler:', error);
     return NextResponse.json(
-      { error: 'Failed to load S&P 500 data' },
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Clear cache endpoint
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const cache = getHistoricalDataCache();
+    cache.clear();
+    
+    return NextResponse.json({
+      message: 'Cache cleared successfully',
+      stats: cache.getStats()
+    });
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    return NextResponse.json(
+      { error: 'Failed to clear cache' },
       { status: 500 }
     );
   }
@@ -229,52 +324,6 @@ export async function OPTIONS(request: NextRequest) {
       'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     },
   });
-}
-
-/**
- * Utility function to load start-of-year dates
- */
-async function loadStartOfYearDates(): Promise<{ [year: string]: string }> {
-  try {
-    const fs = require('fs');
-    const path = require('path');
-    const Papa = require('papaparse');
-
-    const csvPath = path.join(process.cwd(), 'data', 'start-of-year-dates.csv');
-    
-    if (!fs.existsSync(csvPath)) {
-      console.warn('Start-of-year dates file not found, using defaults');
-      return {};
-    }
-
-    const csvContent = fs.readFileSync(csvPath, 'utf8');
-    const parsed = Papa.parse(csvContent, {
-      header: true,
-      dynamicTyping: false,
-      skipEmptyLines: true
-    });
-
-    const dates: { [year: string]: string } = {};
-    
-    if (parsed.data && parsed.data.length > 0) {
-      const row = parsed.data[0];
-      for (const [year, dateStr] of Object.entries(row)) {
-        if (year !== 'Year' && typeof dateStr === 'string') {
-          // Convert from M/D/YY to YYYY-MM-DD format
-          if (dateStr.includes('/')) {
-            const [month, day, year2Digit] = dateStr.split('/');
-            const fullYear = parseInt(year2Digit) < 50 ? `20${year2Digit}` : `19${year2Digit}`;
-            dates[year] = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-          }
-        }
-      }
-    }
-
-    return dates;
-  } catch (error) {
-    console.error('Error loading start-of-year dates:', error);
-    return {};
-  }
 }
 
 /**
