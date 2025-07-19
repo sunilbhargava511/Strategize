@@ -1,5 +1,5 @@
 // api/health.js
-const cache = require('../cache/upstashCache');
+const cache = require('./_upstashCache');
 
 module.exports = async (req, res) => {
   const stats = cache.getStats();
@@ -13,7 +13,7 @@ module.exports = async (req, res) => {
       '/api/health',
       '/api/backtest',
       '/api/market-cap',
-      '/api/cache/stats'
+      '/api/_stats'
     ]
   });
 };

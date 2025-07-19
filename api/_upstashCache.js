@@ -1,14 +1,3 @@
-#!/bin/bash
-
-# Fix cache module for Vercel deployment
-
-echo "Fixing cache module for deployment..."
-
-# Create cache directory if it doesn't exist
-mkdir -p cache
-
-# Create the cache module
-cat > cache/upstashCache.js << 'EOF'
 // cache/upstashCache.js
 // Simple in-memory cache implementation as a fallback
 
@@ -122,51 +111,3 @@ class InMemoryCache {
 const cacheInstance = new InMemoryCache();
 
 module.exports = cacheInstance;
-EOF
-
-echo "✓ Created cache/upstashCache.js"
-
-# Create simple test endpoint
-cat > api/test.js << 'EOF'
-// api/test.js - Simple test endpoint
-module.exports = async (req, res) => {
-  res.json({
-    status: 'ok',
-    message: 'Test endpoint working',
-    timestamp: new Date().toISOString()
-  });
-};
-EOF
-
-echo "✓ Created api/test.js"
-
-# Update vercel.json to include cache directory
-cat > vercel.json << 'EOF'
-{
-  "version": 2,
-  "functions": {
-    "api/*.js": {
-      "includeFiles": "cache/**"
-    },
-    "api/cache/*.js": {
-      "includeFiles": "cache/**"
-    }
-  }
-}
-EOF
-
-echo "✓ Updated vercel.json"
-
-echo ""
-echo "Next steps:"
-echo "1. Add and commit changes:"
-echo "   git add -A"
-echo "   git commit -m 'Add cache module for deployment'"
-echo "   git push"
-echo ""
-echo "2. The deployment should now work with these endpoints:"
-echo "   - /api/test (simple test)"
-echo "   - /api/health"
-echo "   - /api/backtest"
-echo "   - /api/market-cap"
-echo "   - /api/cache/stats"
