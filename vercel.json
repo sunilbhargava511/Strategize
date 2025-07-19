@@ -1,11 +1,3 @@
 {
-  "version": 2,
-  "functions": {
-    "api/*.js": {
-      "includeFiles": "cache/**"
-    },
-    "api/cache/*.js": {
-      "includeFiles": "cache/**"
-    }
-  }
+  "version": 2
 }
