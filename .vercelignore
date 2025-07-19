@@ -2,3 +2,7 @@
 node_modules
 *.ts
 tsconfig.json
+.next
+node_modules
+*.ts
+tsconfig.json
