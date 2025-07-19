@@ -1,5 +1,5 @@
 // api/health.js
-const cache = require('../cache/upstashCache');
+const cache = require('./cache/upstashCache');
 
 module.exports = async (req, res) => {
   const stats = cache.getStats();
