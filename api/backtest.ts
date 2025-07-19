@@ -1,10 +1,7 @@
-// api/backtest.js
-const { runEqualWeightBuyHold } = require('../src/lib/strategies/equalWeightBuyHold');
-const { runMarketCapBuyHold } = require('../src/lib/strategies/marketCapBuyHold');
-const { runEqualWeightRebalanced } = require('../src/lib/strategies/equalWeightRebalanced');
-const { runMarketCapRebalanced } = require('../src/lib/strategies/marketCapRebalanced');
+// api/backtest.ts
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-module.exports = async (req, res) => {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -27,6 +24,19 @@ module.exports = async (req, res) => {
 
     console.log('Starting backtest:', { startYear, endYear, initialInvestment });
 
+    // Dynamic imports for the strategies
+    const [
+      { runEqualWeightBuyHold },
+      { runMarketCapBuyHold },
+      { runEqualWeightRebalanced },
+      { runMarketCapRebalanced }
+    ] = await Promise.all([
+      import('../src/lib/strategies/equalWeightBuyHold'),
+      import('../src/lib/strategies/marketCapBuyHold'),
+      import('../src/lib/strategies/equalWeightRebalanced'),
+      import('../src/lib/strategies/marketCapRebalanced')
+    ]);
+
     // Run all strategies
     const [equalWeightBH, marketCapBH, equalWeightReb, marketCapReb] = await Promise.all([
       runEqualWeightBuyHold(startYear, endYear, initialInvestment),
@@ -48,7 +58,7 @@ module.exports = async (req, res) => {
     console.error('Backtest error:', error);
     res.status(500).json({ 
       error: 'Backtest failed', 
-      message: error.message 
+      message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
-};
+}

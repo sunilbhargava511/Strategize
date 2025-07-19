@@ -1,7 +1,9 @@
-// api/health.js
+// api/health.ts
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+
 const cache = require('./_upstashCache');
 
-module.exports = async (req, res) => {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const stats = cache.getStats();
   
   res.json({ 
@@ -12,8 +14,7 @@ module.exports = async (req, res) => {
     endpoints: [
       '/api/health',
       '/api/backtest',
-      '/api/market-cap',
-      '/api/_stats'
+      '/api/market-cap'
     ]
   });
-};
+}
