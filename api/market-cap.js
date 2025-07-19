@@ -1,6 +1,6 @@
 // api/market-cap.js
 const axios = require('axios');
-const cache = require('./cache/upstashCache');
+const cache = require('../cache/upstashCache');
 
 module.exports = async (req, res) => {
   // Enable CORS
