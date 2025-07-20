@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { ticker, date } = req.query;
+    const { ticker, date, bypass_cache } = req.query;
 
     if (!ticker) {
       return res.status(400).json({ error: 'Ticker parameter is required' });
@@ -27,13 +27,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Type assertions for query parameters
     const tickerStr = ticker as string;
     const dateStr = date as string || new Date().toISOString().split('T')[0];
+    const bypassCache = bypass_cache === 'true';
 
-    // Check cache first
+    // Check cache first (unless bypassed)
     const cacheKey = `market-cap:${tickerStr}:${dateStr}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      console.log(`Cache hit for ${tickerStr} on ${dateStr}`);
-      return res.status(200).json(cached);
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        console.log(`Cache hit for ${tickerStr} on ${dateStr}`);
+        return res.status(200).json({ ...cached, from_cache: true });
+      }
+    } else {
+      console.log(`Cache bypassed for ${tickerStr} on ${dateStr}`);
     }
 
     console.log(`Cache miss for ${tickerStr} on ${dateStr} - fetching from EOD API`);
@@ -130,10 +135,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }).format(marketCap) : 'N/A'
     };
 
-    // Cache forever - historical data doesn't change
-    await cache.set(cacheKey, result);
+    // Cache forever - historical data doesn't change (unless bypassed)
+    if (!bypassCache) {
+      await cache.set(cacheKey, result);
+    }
 
-    res.status(200).json(result);
+    res.status(200).json({ ...result, from_cache: false });
   } catch (error: any) {
     console.error('Market cap error:', error);
     res.status(500).json({ 

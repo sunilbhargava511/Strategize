@@ -16,10 +16,11 @@ interface StrategyResult {
   yearlyValues: Record<number, number>;
 }
 
-async function fetchStockData(ticker: string, date: string): Promise<StockData | null> {
+async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
   try {
     // Use our existing market-cap API endpoint
-    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${ticker}&date=${date}`);
+    const bypassParam = bypassCache ? '&bypass_cache=true' : '';
+    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${ticker}&date=${date}${bypassParam}`);
     
     if (!response.ok) {
       console.error(`Failed to fetch data for ${ticker} on ${date}`);
@@ -45,7 +46,8 @@ async function calculateStrategy(
   endYear: number,
   initialInvestment: number,
   strategyType: 'equalWeight' | 'marketCap',
-  rebalance: boolean
+  rebalance: boolean,
+  bypassCache: boolean = false
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
   let currentValue = initialInvestment;
@@ -65,8 +67,8 @@ async function calculateStrategy(
   const finalPrices: Record<string, number> = {};
   
   for (const ticker of tickers) {
-    const startData = await fetchStockData(ticker, startDate);
-    const endData = await fetchStockData(ticker, endDate);
+    const startData = await fetchStockData(ticker, startDate, bypassCache);
+    const endData = await fetchStockData(ticker, endDate, bypassCache);
     
     if (startData && endData) {
       initialPrices[ticker] = startData.adjusted_close;
@@ -144,7 +146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { startYear, endYear, initialInvestment, tickers = [] } = req.body;
+    const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
 
     // Validate inputs
     if (!startYear || !endYear || !initialInvestment) {
@@ -161,13 +163,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Check cache first
+    // Check cache first (unless bypassed)
     const tickerString = tickers.sort().join(',');
     const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickerString}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      console.log('Returning cached backtest results');
-      return res.status(200).json(cached);
+    if (!bypass_cache) {
+      const cached = await cache.get(cacheKey);
+      if (cached) {
+        console.log('Returning cached backtest results');
+        return res.status(200).json({ ...cached, from_cache: true });
+      }
+    } else {
+      console.log('Cache bypassed for backtest');
     }
 
     // Check if we have EODHD API token
@@ -211,19 +217,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: 'Note: EODHD API token not configured. Using simulated data.'
       };
       
-      // Don't cache mock data forever - use 1 hour
-      await cache.set(cacheKey, results, 3600);
-      return res.status(200).json(results);
+      // Don't cache mock data forever - use 1 hour (unless bypassed)
+      if (!bypass_cache) {
+        await cache.set(cacheKey, results, 3600);
+      }
+      return res.status(200).json({ ...results, from_cache: false });
     }
 
     // Calculate real results using EODHD data
     console.log(`Running backtest for ${tickers.length} tickers from ${startYear} to ${endYear}`);
     
     const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced] = await Promise.all([
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', false),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', false),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', true),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', true)
+      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
+      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache),
+      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache),
+      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache)
     ]);
 
     const results = {
@@ -243,12 +251,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Calculations based on real EODHD market data.'
     };
 
-    // Cache forever if end year is in the past, otherwise cache for 1 day
-    const currentYear = new Date().getFullYear();
-    const cacheTime = endYear < currentYear ? undefined : 86400;
-    await cache.set(cacheKey, results, cacheTime);
+    // Cache forever if end year is in the past, otherwise cache for 1 day (unless bypassed)
+    if (!bypass_cache) {
+      const currentYear = new Date().getFullYear();
+      const cacheTime = endYear < currentYear ? undefined : 86400;
+      await cache.set(cacheKey, results, cacheTime);
+    }
 
-    res.status(200).json(results);
+    res.status(200).json({ ...results, from_cache: false });
   } catch (error: any) {
     console.error('Backtest error:', error);
     res.status(500).json({ 
