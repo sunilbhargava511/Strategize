@@ -519,9 +519,11 @@ async function calculateStrategy(
       tickerAvailability[ticker].hasStart || tickerAvailability[ticker].hasEnd
     );
   } else {
-    // Buy & hold strategies: use only stocks available at both start and end
-    console.log('Buy & hold strategy: only using stocks available at start date');
-    validTickers = Object.keys(initialPrices);
+    // Buy & hold strategies: use any stock that becomes available during the period
+    console.log('Buy & hold strategy: will add stocks as they become available during the period');
+    validTickers = tickers.filter(ticker => 
+      tickerAvailability[ticker].hasStart || tickerAvailability[ticker].hasEnd
+    );
   }
   console.log('Backtest calculation:', { 
     strategy: rebalance ? 'rebalanced' : 'buy-and-hold',
@@ -566,112 +568,154 @@ async function calculateStrategy(
     Object.assign(yearlyHoldings, rebalancedResult.yearlyHoldings);
     Object.assign(yearlyValues, rebalancedResult.yearlyValues);
   } else {
-    // BUY & HOLD STRATEGY: Simple start-to-end calculation
-    console.log(`Starting ${strategyType} buy & hold strategy calculation`);
+    // BUY & HOLD STRATEGY: Add stocks as they become available, then hold
+    console.log(`Starting ${strategyType} buy & hold strategy calculation with dynamic stock addition`);
     
-    if (strategyType === 'equalWeight') {
-      const perStockInvestment = initialInvestment / validTickers.length;
-      let totalEndValue = 0;
+    // Track the portfolio holdings and cash
+    const portfolio: Record<string, { shares: number; addedYear: number; initialPrice: number; }> = {};
+    let availableCash = initialInvestment;
+    currentValue = initialInvestment;
+    
+    // Simulate year by year to add new stocks as they become available
+    for (let year = startYear; year <= endYear; year++) {
+      const yearStart = `${year}-01-02`;
+      const yearEnd = year === endYear ? `${year}-12-31` : `${year+1}-01-02`;
       
-      // Set up equal weight holdings for all years
-      for (let year = startYear; year <= endYear; year++) {
-        yearlyHoldings[year] = {};
-        yearlyValues[year] = year === startYear ? initialInvestment : 0;
-      }
+      yearlyHoldings[year] = {};
       
-      for (const ticker of validTickers) {
-        const startPrice = initialPrices[ticker];
-        const endPrice = finalPrices[ticker];
-        const stockReturn = (endPrice - startPrice) / startPrice;
-        const stockEndValue = perStockInvestment * (1 + stockReturn);
-        const shares = perStockInvestment / startPrice;
-        const weight = 1 / validTickers.length;
-        totalEndValue += stockEndValue;
-        
-        // Track portfolio composition
-        portfolioComposition[ticker] = {
-          initialWeight: weight,
-          finalWeight: weight, // Equal weight maintains same weight
-          available: true
-        };
-        
-        // Add holdings for each year (buy & hold maintains same shares)
-        for (let year = startYear; year <= endYear; year++) {
-          const yearDate = `${year}-01-02`;
-          const yearPrice = year === startYear ? startPrice : 
-                           year === endYear ? endPrice : 
-                           startPrice * (1 + (stockReturn * (year - startYear) / (endYear - startYear)));
+      // Find new stocks that became available this year
+      const newStocks: string[] = [];
+      const stockPrices: Record<string, number> = {};
+      const stockMarketCaps: Record<string, number> = {};
+      
+      for (const ticker of tickers) {
+        const yearData = await fetchStockData(ticker, yearStart, bypassCache, historicalData);
+        if (yearData) {
+          stockPrices[ticker] = yearData.adjusted_close;
           
-          yearlyHoldings[year][ticker] = {
-            weight: weight,
-            shares: shares,
-            value: shares * yearPrice,
-            price: yearPrice
-          };
+          // Get market cap for market cap weighted strategies
+          if (strategyType === 'marketCap') {
+            try {
+              const cacheKey = `market-cap:${ticker}:${yearStart}`;
+              const cachedMarketCap = await cache.get(cacheKey) as any;
+              if (cachedMarketCap && cachedMarketCap.market_cap) {
+                stockMarketCaps[ticker] = cachedMarketCap.market_cap;
+              } else {
+                stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
+              }
+            } catch (error) {
+              stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
+            }
+          }
           
-          if (year > startYear) {
-            yearlyValues[year] += shares * yearPrice;
+          // Check if this is a new stock (not already in portfolio)
+          if (!portfolio[ticker]) {
+            newStocks.push(ticker);
           }
         }
       }
       
-      currentValue = totalEndValue;
-    } else {
-      // Market cap weighted calculation using actual market cap data
-      let totalMarketCap = 0;
-      
-      for (const ticker of validTickers) {
-        totalMarketCap += initialMarketCaps[ticker];
-      }
-      
-      // Set up market cap weighted holdings for all years
-      for (let year = startYear; year <= endYear; year++) {
-        yearlyHoldings[year] = {};
-        yearlyValues[year] = year === startYear ? initialInvestment : 0;
-      }
-      
-      let totalEndValue = 0;
-      
-      for (const ticker of validTickers) {
-        const weight = initialMarketCaps[ticker] / totalMarketCap;
-        const stockInvestment = initialInvestment * weight;
-        const startPrice = initialPrices[ticker];
-        const endPrice = finalPrices[ticker];
-        const stockReturn = (endPrice - startPrice) / startPrice;
-        const stockEndValue = stockInvestment * (1 + stockReturn);
-        const shares = stockInvestment / startPrice;
-        totalEndValue += stockEndValue;
+      // Add new stocks to portfolio
+      if (newStocks.length > 0 && availableCash > 0) {
+        console.log(`${year}: Adding ${newStocks.length} new stocks: ${newStocks.join(', ')}`);
         
-        // Track portfolio composition
-        portfolioComposition[ticker] = {
-          initialWeight: weight,
-          finalWeight: weight, // Market cap weight maintains same weight for buy & hold
-          available: true
-        };
+        let totalInvestmentForNewStocks = 0;
+        const existingStocksCount = Object.keys(portfolio).length;
+        const totalStocksAfterAddition = existingStocksCount + newStocks.length;
         
-        // Add holdings for each year (buy & hold maintains same shares)
-        for (let year = startYear; year <= endYear; year++) {
-          const yearDate = `${year}-01-02`;
-          const yearPrice = year === startYear ? startPrice : 
-                           year === endYear ? endPrice : 
-                           startPrice * (1 + (stockReturn * (year - startYear) / (endYear - startYear)));
+        if (strategyType === 'equalWeight') {
+          // For equal weight: split available cash equally among new stocks
+          const cashPerNewStock = availableCash / newStocks.length;
           
-          yearlyHoldings[year][ticker] = {
-            weight: weight,
-            shares: shares,
-            value: shares * yearPrice,
-            price: yearPrice
-          };
+          for (const ticker of newStocks) {
+            const price = stockPrices[ticker];
+            const shares = cashPerNewStock / price;
+            portfolio[ticker] = {
+              shares: shares,
+              addedYear: year,
+              initialPrice: price
+            };
+            totalInvestmentForNewStocks += cashPerNewStock;
+            
+            // Track in portfolio composition
+            portfolioComposition[ticker] = {
+              initialWeight: 0, // Will be calculated after all stocks are added
+              finalWeight: 0,   // Will be calculated at the end
+              available: true
+            };
+            
+            console.log(`  ${ticker}: Added ${shares.toFixed(0)} shares at $${price.toFixed(2)} = $${cashPerNewStock.toFixed(0)}`);
+          }
+        } else {
+          // For market cap weighted: allocate based on market cap proportions
+          const totalMarketCapOfNewStocks = newStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
           
-          if (year > startYear) {
-            yearlyValues[year] += shares * yearPrice;
+          for (const ticker of newStocks) {
+            const marketCapWeight = stockMarketCaps[ticker] / totalMarketCapOfNewStocks;
+            const investment = availableCash * marketCapWeight;
+            const price = stockPrices[ticker];
+            const shares = investment / price;
+            
+            portfolio[ticker] = {
+              shares: shares,
+              addedYear: year,
+              initialPrice: price
+            };
+            totalInvestmentForNewStocks += investment;
+            
+            // Track in portfolio composition
+            portfolioComposition[ticker] = {
+              initialWeight: 0, // Will be calculated after all stocks are added
+              finalWeight: 0,   // Will be calculated at the end
+              available: true
+            };
+            
+            console.log(`  ${ticker}: Added ${shares.toFixed(0)} shares at $${price.toFixed(2)} = $${investment.toFixed(0)} (${(marketCapWeight * 100).toFixed(1)}% of new stock allocation)`);
           }
         }
         
-        console.log(`${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B, weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
+        availableCash -= totalInvestmentForNewStocks;
       }
       
-      currentValue = totalEndValue;
+      // Calculate current portfolio value and holdings for this year
+      let totalPortfolioValue = availableCash;
+      
+      for (const [ticker, holding] of Object.entries(portfolio)) {
+        const currentPrice = stockPrices[ticker];
+        if (currentPrice) {
+          const currentValue = holding.shares * currentPrice;
+          totalPortfolioValue += currentValue;
+          
+          yearlyHoldings[year][ticker] = {
+            weight: 0, // Will be calculated below
+            shares: holding.shares,
+            value: currentValue,
+            price: currentPrice
+          };
+        }
+      }
+      
+      // Calculate weights based on current values
+      for (const ticker of Object.keys(yearlyHoldings[year])) {
+        yearlyHoldings[year][ticker].weight = yearlyHoldings[year][ticker].value / totalPortfolioValue;
+      }
+      
+      yearlyValues[year] = totalPortfolioValue;
+      currentValue = totalPortfolioValue;
+      
+      console.log(`${year}: Portfolio value: $${Math.floor(totalPortfolioValue).toLocaleString()}, Cash: $${Math.floor(availableCash).toLocaleString()}, Stocks: ${Object.keys(portfolio).length}`);
+    }
+    
+    // Update portfolio composition with final weights
+    const finalPortfolioValue = currentValue - availableCash;
+    if (finalPortfolioValue > 0) {
+      for (const [ticker, _] of Object.entries(portfolio)) {
+        const finalYearHolding = yearlyHoldings[endYear][ticker];
+        if (finalYearHolding) {
+          portfolioComposition[ticker].finalWeight = finalYearHolding.value / finalPortfolioValue;
+          portfolioComposition[ticker].initialWeight = finalYearHolding.value / finalPortfolioValue; // Approximation
+        }
+      }
     }
   }
   
