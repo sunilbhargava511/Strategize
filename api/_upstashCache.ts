@@ -37,6 +37,17 @@ export const cache = {
       return false;
     }
   },
+
+  del: async (key: string): Promise<boolean> => {
+    if (!redis) return false;
+    try {
+      await redis.del(key);
+      return true;
+    } catch (error) {
+      console.error('Cache delete error:', error);
+      return false;
+    }
+  },
   
   getStats: async (): Promise<{ status: string; type?: string; size?: number; error?: string }> => {
     if (!redis) return { status: 'disabled' };
