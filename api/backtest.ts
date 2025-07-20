@@ -7,6 +7,8 @@ interface StockData {
   date: string;
   price: number;
   adjusted_close: number;
+  market_cap?: number;
+  shares_outstanding?: number;
 }
 
 interface StrategyResult {
@@ -14,6 +16,33 @@ interface StrategyResult {
   annualizedReturn: number;
   finalValue: number;
   yearlyValues: Record<number, number>;
+}
+
+async function fetchMarketCapData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
+  try {
+    // Check cache first
+    const cacheKey = `market-cap:${ticker}:${date}`;
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached) {
+        console.log(`Cache hit for market cap ${ticker} on ${date}`);
+        return {
+          ticker: ticker,
+          date: cached.date || date,
+          price: cached.adjusted_close || cached.price,
+          adjusted_close: cached.adjusted_close || cached.price,
+          market_cap: cached.market_cap,
+          shares_outstanding: cached.shares_outstanding
+        };
+      }
+    }
+    
+    // If not in cache, fetch using the existing logic
+    return fetchStockData(ticker, date, bypassCache);
+  } catch (error) {
+    console.error(`Error fetching market cap for ${ticker} on ${date}:`, error);
+    return null;
+  }
 }
 
 async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
@@ -156,14 +185,15 @@ async function calculateStrategy(
   const startDate = `${startYear}-01-02`;
   const endDate = `${endYear}-12-31`;
   
-  // Fetch initial and final prices for all tickers
+  // Fetch initial and final data including market caps for all tickers
   const initialPrices: Record<string, number> = {};
   const finalPrices: Record<string, number> = {};
+  const initialMarketCaps: Record<string, number> = {};
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
   for (const ticker of tickers) {
-    const startData = await fetchStockData(ticker, startDate, bypassCache);
-    const endData = await fetchStockData(ticker, endDate, bypassCache);
+    const startData = await fetchMarketCapData(ticker, startDate, bypassCache);
+    const endData = await fetchMarketCapData(ticker, endDate, bypassCache);
     
     tickerAvailability[ticker] = {
       hasStart: !!startData,
@@ -174,6 +204,15 @@ async function calculateStrategy(
     if (startData && endData) {
       initialPrices[ticker] = startData.adjusted_close;
       finalPrices[ticker] = endData.adjusted_close;
+      // Store market cap if available, otherwise calculate from price * shares
+      if (startData.market_cap) {
+        initialMarketCaps[ticker] = startData.market_cap;
+      } else if (startData.shares_outstanding) {
+        initialMarketCaps[ticker] = startData.adjusted_close * startData.shares_outstanding;
+      } else {
+        // Fallback: use price as proxy with large multiplier
+        initialMarketCaps[ticker] = startData.adjusted_close * 1000000000; // Assume 1B shares as default
+      }
     }
     // For rebalanced strategies, we'll handle availability year by year
   }
@@ -226,24 +265,17 @@ async function calculateStrategy(
     
     currentValue = totalEndValue;
   } else {
-    // Market cap weighted calculation
-    // For simplification, use approximate market caps based on stock prices
-    // (In reality, we'd need shares outstanding data)
-    
-    // Calculate approximate market caps using current prices as proxy
-    const marketCaps: Record<string, number> = {};
+    // Market cap weighted calculation using actual market cap data
     let totalMarketCap = 0;
     
     for (const ticker of validTickers) {
-      // Use final price as proxy for market cap (larger companies have higher stock prices generally)
-      marketCaps[ticker] = finalPrices[ticker] * 1000000; // Arbitrary multiplier for relative weighting
-      totalMarketCap += marketCaps[ticker];
+      totalMarketCap += initialMarketCaps[ticker];
     }
     
     let totalEndValue = 0;
     
     for (const ticker of validTickers) {
-      const weight = marketCaps[ticker] / totalMarketCap;
+      const weight = initialMarketCaps[ticker] / totalMarketCap;
       const stockInvestment = initialInvestment * weight;
       const startPrice = initialPrices[ticker];
       const endPrice = finalPrices[ticker];
@@ -251,19 +283,22 @@ async function calculateStrategy(
       const stockEndValue = stockInvestment * (1 + stockReturn);
       totalEndValue += stockEndValue;
       
-      console.log(`${ticker} market cap weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
+      console.log(`${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B, weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
     }
     
     currentValue = totalEndValue;
   }
   
-  // Apply rebalancing adjustment (simplified)
+  // Rebalancing should not artificially change returns
+  // In real life, rebalancing may have slight transaction costs or timing benefits
+  // For now, we'll not apply any artificial adjustments
   if (rebalance) {
-    // Rebalanced strategies typically have slightly different returns due to periodic rebalancing
-    // For now, apply a small adjustment to differentiate from buy-and-hold
-    console.log(`Applying rebalancing adjustment for ${strategyType} strategy`);
-    const rebalancingBonus = strategyType === 'equalWeight' ? 1.02 : 0.98; // EQW benefits more from rebalancing
-    currentValue *= rebalancingBonus;
+    console.log(`Rebalanced ${strategyType} strategy - no artificial adjustments applied`);
+    // In a real implementation, we would:
+    // 1. Track portfolio values year by year
+    // 2. Rebalance annually to target weights
+    // 3. Account for any new stocks added or removed
+    // 4. Calculate actual returns based on rebalanced positions
   }
   
   // Calculate returns

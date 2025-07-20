@@ -47,8 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ['MC', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.marketCapRebalanced?.annualizedReturn || 0).toFixed(1)}%`],
       ['SPY', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.spyBenchmark?.annualizedReturn || 0).toFixed(1)}%`], // SPY benchmark
       ['EQW', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(1)}%`],
-      ['EQW B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(1)}%`],
-      ['RSP', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(initialInvestment).toLocaleString()}.00`, '0.0%'] // RSP benchmark (disabled when no data)
+      ['EQW B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(1)}%`]
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
     XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
