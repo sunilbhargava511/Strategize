@@ -5,6 +5,7 @@ import StrategySelection from '../components/backtesting/StrategySelection'
 import ConfigurationPanel from '../components/backtesting/ConfigurationPanel'
 import ResultsDisplay from '../components/backtesting/ResultsDisplay'
 import Header from '../components/ui/Header'
+import CacheManager from '../components/ui/CacheManager'
 
 export default function Home() {
   const [tickers, setTickers] = useState<string[]>([])
@@ -151,28 +152,8 @@ export default function Home() {
               <ResultsDisplay results={results} />
             )}
 
-            {/* Cache Information */}
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <span className="text-2xl">💾</span>
-                </div>
-                <div className="ml-3">
-                  <h3 className="text-lg font-medium text-yellow-800">
-                    Historical Data Cache
-                  </h3>
-                  <p className="text-yellow-700 mt-1">
-                    The tool automatically creates a cache file containing historical price, 
-                    market cap, and shares outstanding data for all processed stocks. This cache:
-                  </p>
-                  <ul className="list-disc list-inside text-yellow-700 mt-2 space-y-1">
-                    <li>Speeds up subsequent analyses</li>
-                    <li>Reduces API calls to data providers</li>
-                    <li>Can be exported and shared between analyses</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
+            {/* Cache Manager */}
+            <CacheManager />
           </div>
         </main>
       </div>
