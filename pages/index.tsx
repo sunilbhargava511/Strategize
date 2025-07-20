@@ -42,7 +42,9 @@ export default function Home() {
         body: JSON.stringify({
           tickers,
           strategies: selectedStrategies,
-          ...configuration
+          startYear: configuration.startYear,
+          endYear: configuration.endYear,
+          initialInvestment: configuration.initialInvestment
         })
       })
 

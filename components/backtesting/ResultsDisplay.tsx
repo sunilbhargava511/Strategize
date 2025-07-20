@@ -18,6 +18,36 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
     }).format(value)
   }
 
+  const handleExcelDownload = async () => {
+    try {
+      const response = await fetch('/api/export-excel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ results })
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Get the blob from the response
+      const blob = await response.blob();
+      
+      // Create a download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'backtest-results.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Download error:', error);
+      alert('Failed to download results. Please try again.');
+    }
+  }
+
   const strategies = [
     { key: 'equalWeightBuyHold', name: 'Equal Weight Buy & Hold', icon: '⚖️' },
     { key: 'marketCapBuyHold', name: 'Market Cap Buy & Hold', icon: '📈' },
@@ -97,11 +127,13 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         </h3>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <button className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <button 
+            onClick={handleExcelDownload}
+            className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <span>✅</span>
             <div className="text-left">
-              <div className="font-medium">Excel Report (.xlsx)</div>
-              <div className="text-sm text-gray-600">Comprehensive analysis with multiple tabs</div>
+              <div className="font-medium">Excel Report (.csv)</div>
+              <div className="text-sm text-gray-600">Download results in Excel-compatible format</div>
             </div>
           </button>
           

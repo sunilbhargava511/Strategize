@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { startYear, endYear, initialInvestment } = req.body;
+    const { startYear, endYear, initialInvestment, tickers = [] } = req.body;
 
     // Validate inputs
     if (!startYear || !endYear || !initialInvestment) {
@@ -29,42 +29,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Check cache first
-    const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}`;
+    const tickerString = tickers.sort().join(',');
+    const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickerString}`;
     const cached = await cache.get(cacheKey);
     if (cached) {
       console.log('Returning cached backtest results');
       return res.status(200).json(cached);
     }
 
-    // For now, return mock results
-    // TODO: Implement actual backtest logic here or call an external service
+    // Generate more realistic mock results based on input
+    // TODO: Replace with actual strategy calculations
+    const yearRange = endYear - startYear;
+    const baseReturn = 8 + (Math.random() * 4); // 8-12% base annual return
+    
     const results = {
       equalWeightBuyHold: {
-        totalReturn: 1245.32,
-        annualizedReturn: 20.15,
-        finalValue: initialInvestment * 13.45,
+        totalReturn: ((Math.pow(1 + baseReturn/100, yearRange) - 1) * 100),
+        annualizedReturn: baseReturn,
+        finalValue: initialInvestment * Math.pow(1 + baseReturn/100, yearRange),
         yearlyValues: {}
       },
       marketCapBuyHold: {
-        totalReturn: 1658.07,
-        annualizedReturn: 22.74,
-        finalValue: initialInvestment * 17.58,
+        totalReturn: ((Math.pow(1 + (baseReturn + 2)/100, yearRange) - 1) * 100),
+        annualizedReturn: baseReturn + 2,
+        finalValue: initialInvestment * Math.pow(1 + (baseReturn + 2)/100, yearRange),
         yearlyValues: {}
       },
       equalWeightRebalanced: {
-        totalReturn: 4998.60,
-        annualizedReturn: 32.45,
-        finalValue: initialInvestment * 50.99,
+        totalReturn: ((Math.pow(1 + (baseReturn + 3)/100, yearRange) - 1) * 100),
+        annualizedReturn: baseReturn + 3,
+        finalValue: initialInvestment * Math.pow(1 + (baseReturn + 3)/100, yearRange),
         yearlyValues: {}
       },
       marketCapRebalanced: {
-        totalReturn: 1676.94,
-        annualizedReturn: 22.84,
-        finalValue: initialInvestment * 17.77,
+        totalReturn: ((Math.pow(1 + (baseReturn + 1.5)/100, yearRange) - 1) * 100),
+        annualizedReturn: baseReturn + 1.5,
+        finalValue: initialInvestment * Math.pow(1 + (baseReturn + 1.5)/100, yearRange),
         yearlyValues: {}
       },
-      parameters: { startYear, endYear, initialInvestment },
-      message: 'Note: This is mock data. Full implementation requires strategy calculation logic.'
+      parameters: { 
+        startYear, 
+        endYear, 
+        initialInvestment,
+        tickerCount: tickers.length || 0,
+        tickers: tickers.slice(0, 5) // Show first 5 tickers
+      },
+      message: 'Note: This is simulated data. Integration with actual strategy calculations is in progress.'
     };
 
     // Cache results for 1 hour
