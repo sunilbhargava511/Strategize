@@ -20,12 +20,16 @@ interface StrategyResult {
 
 async function fetchMarketCapData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
   try {
-    // Check cache first
+    // Check cache first for market cap data
     const cacheKey = `market-cap:${ticker}:${date}`;
     if (!bypassCache) {
       const cached = await cache.get(cacheKey) as any;
       if (cached) {
-        console.log(`Cache hit for market cap ${ticker} on ${date}`);
+        console.log(`Cache hit for market cap ${ticker} on ${date}:`, {
+          price: cached.adjusted_close,
+          market_cap: cached.market_cap,
+          shares: cached.shares_outstanding
+        });
         return {
           ticker: ticker,
           date: cached.date || date,
@@ -37,11 +41,106 @@ async function fetchMarketCapData(ticker: string, date: string, bypassCache: boo
       }
     }
     
-    // If not in cache, fetch using the existing logic
-    return fetchStockData(ticker, date, bypassCache);
+    console.log(`Cache miss for market cap ${ticker} on ${date}, fetching from EODHD`);
+    
+    // If not in cache, fetch from EODHD API directly
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured for market cap fetch');
+      return fetchStockData(ticker, date, bypassCache);
+    }
+    
+    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    
+    // Fetch price data
+    const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
+    const priceResponse = await fetch(priceUrl);
+    
+    if (!priceResponse.ok) {
+      console.error(`EODHD price API failed for ${tickerWithExchange} on ${date}`);
+      return fetchStockData(ticker, date, bypassCache);
+    }
+    
+    const priceData = await priceResponse.json();
+    if (!priceData || !Array.isArray(priceData) || priceData.length === 0) {
+      console.log(`No price data for ${tickerWithExchange} on ${date}`);
+      return null;
+    }
+    
+    const dayData = priceData[0];
+    
+    // Fetch fundamentals data for market cap
+    let marketCap = 0;
+    let sharesOutstanding = 0;
+    
+    try {
+      const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
+      const fundamentalsResponse = await fetch(fundamentalsUrl);
+      
+      if (fundamentalsResponse.ok) {
+        const fundamentalsData = await fundamentalsResponse.json();
+        
+        if (fundamentalsData?.Highlights?.SharesOutstanding) {
+          sharesOutstanding = fundamentalsData.Highlights.SharesOutstanding;
+          marketCap = dayData.adjusted_close * sharesOutstanding;
+        } else if (fundamentalsData?.Highlights?.MarketCapitalization) {
+          marketCap = fundamentalsData.Highlights.MarketCapitalization;
+          sharesOutstanding = marketCap / dayData.adjusted_close;
+        }
+        
+        if (fundamentalsData?.SharesStats?.SharesOutstanding) {
+          sharesOutstanding = fundamentalsData.SharesStats.SharesOutstanding;
+          marketCap = dayData.adjusted_close * sharesOutstanding;
+        }
+      }
+    } catch (fundError) {
+      console.error('Error fetching fundamentals for market cap:', fundError);
+    }
+    
+    // Fallback market cap estimation
+    if (marketCap === 0 && dayData.volume > 0) {
+      sharesOutstanding = dayData.volume * 50; // Rough estimate
+      marketCap = dayData.adjusted_close * sharesOutstanding;
+    }
+    
+    const result = {
+      ticker: ticker,
+      date: dayData.date,
+      price: dayData.adjusted_close || dayData.close,
+      adjusted_close: dayData.adjusted_close || dayData.close,
+      market_cap: marketCap,
+      shares_outstanding: sharesOutstanding
+    };
+    
+    // Cache the result
+    if (!bypassCache) {
+      await cache.set(cacheKey, {
+        ...result,
+        open: dayData.open,
+        high: dayData.high,
+        low: dayData.low,
+        volume: dayData.volume,
+        market_cap_billions: marketCap / 1000000000,
+        formatted_market_cap: marketCap > 0 ? 
+          new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(marketCap) : 'N/A'
+      });
+    }
+    
+    console.log(`Fetched and cached market cap for ${ticker} on ${date}:`, {
+      price: result.adjusted_close,
+      market_cap: marketCap,
+      shares: sharesOutstanding
+    });
+    
+    return result;
   } catch (error) {
     console.error(`Error fetching market cap for ${ticker} on ${date}:`, error);
-    return null;
+    return fetchStockData(ticker, date, bypassCache);
   }
 }
 
