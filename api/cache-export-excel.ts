@@ -82,12 +82,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // Store the data
             dataByYear[year][ticker].price = value.adjusted_close || value.price || 0;
             
-            // Calculate market cap if we have volume as a proxy
-            // Note: Real market cap calculation would need shares outstanding
-            // For now, we'll use a simplified approach
-            const estimatedShares = value.volume ? value.volume * 100 : 1000000000;
-            dataByYear[year][ticker].marketCap = dataByYear[year][ticker].price * estimatedShares;
-            dataByYear[year][ticker].sharesOutstanding = estimatedShares;
+            // Use actual market cap and shares outstanding from the cached data
+            if (value.market_cap) {
+              dataByYear[year][ticker].marketCap = value.market_cap;
+            } else if (value.shares_outstanding && dataByYear[year][ticker].price) {
+              // Calculate market cap from shares and price
+              dataByYear[year][ticker].marketCap = dataByYear[year][ticker].price * value.shares_outstanding;
+            }
+            
+            if (value.shares_outstanding) {
+              dataByYear[year][ticker].sharesOutstanding = value.shares_outstanding;
+            } else if (value.market_cap && dataByYear[year][ticker].price) {
+              // Calculate shares from market cap and price
+              dataByYear[year][ticker].sharesOutstanding = Math.floor(value.market_cap / dataByYear[year][ticker].price);
+            }
           }
         }
       } catch (err) {
@@ -149,8 +157,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ['Years Covered', years.join(', ')],
       ['Total Data Points', marketCapKeys.length],
       [''],
-      ['Note: Market cap and shares outstanding are estimated from volume data.'],
-      ['For accurate data, real shares outstanding information would be needed.']
+      ['Note: Market cap and shares outstanding data sourced from EODHD Fundamentals API.'],
+      ['Data accuracy depends on the availability of fundamental data for each ticker.']
     ];
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');

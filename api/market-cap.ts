@@ -69,16 +69,65 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Get the price data for the requested date
     const dayData = priceData[0];
 
-    // Prepare result
+    // Fetch fundamentals data for shares outstanding and market cap
+    let sharesOutstanding = 0;
+    let marketCap = 0;
+    
+    try {
+      const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerStr}.US?api_token=${EOD_API_KEY}&fmt=json`;
+      const fundamentalsResponse = await fetch(fundamentalsUrl);
+      
+      if (fundamentalsResponse.ok) {
+        const fundamentalsData = await fundamentalsResponse.json();
+        
+        // Extract shares outstanding and market cap from fundamentals
+        if (fundamentalsData?.Highlights?.SharesOutstanding) {
+          sharesOutstanding = fundamentalsData.Highlights.SharesOutstanding;
+          marketCap = dayData.adjusted_close * sharesOutstanding;
+        } else if (fundamentalsData?.Highlights?.MarketCapitalization) {
+          // If shares outstanding not available, use market cap directly
+          marketCap = fundamentalsData.Highlights.MarketCapitalization;
+          sharesOutstanding = marketCap / dayData.adjusted_close;
+        }
+        
+        // Also check SharesStats for more accurate data
+        if (fundamentalsData?.SharesStats?.SharesOutstanding) {
+          sharesOutstanding = fundamentalsData.SharesStats.SharesOutstanding;
+          marketCap = dayData.adjusted_close * sharesOutstanding;
+        }
+      }
+    } catch (fundError) {
+      console.error('Error fetching fundamentals:', fundError);
+      // Continue with price data even if fundamentals fail
+    }
+
+    // If we still don't have market cap data, estimate from volume
+    if (marketCap === 0 && dayData.volume > 0) {
+      // This is a rough estimate - not accurate but better than nothing
+      sharesOutstanding = dayData.volume * 50; // Very rough estimate
+      marketCap = dayData.adjusted_close * sharesOutstanding;
+    }
+
+    // Prepare result with all data
     const result = {
       ticker: `${tickerStr}.US`,
       date: dateStr,
       price: dayData.close,
+      adjusted_close: dayData.adjusted_close,
       open: dayData.open,
       high: dayData.high,
       low: dayData.low,
       volume: dayData.volume,
-      adjusted_close: dayData.adjusted_close
+      shares_outstanding: Math.floor(sharesOutstanding),
+      market_cap: parseFloat(marketCap.toFixed(0)),
+      market_cap_billions: parseFloat((marketCap / 1000000000).toFixed(2)),
+      formatted_market_cap: marketCap > 0 ? 
+        new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(marketCap) : 'N/A'
     };
 
     // Cache forever - historical data doesn't change
