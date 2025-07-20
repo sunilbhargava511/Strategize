@@ -22,7 +22,10 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
     
     // Use our existing market-cap API endpoint with POST method
-    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap`, {
+    // For Vercel, we need to construct the full URL for internal API calls
+    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
+    console.log(`Calling internal API: ${baseUrl}/api/market-cap`);
+    const response = await fetch(`${baseUrl}/api/market-cap`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
