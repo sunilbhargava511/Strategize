@@ -347,6 +347,13 @@ async function calculateStrategy(
     rebalance
   });
   
+  // Add warning for insufficient stock diversity
+  if (validTickers.length < tickers.length) {
+    const missingTickers = tickers.filter(t => !validTickers.includes(t));
+    console.log(`⚠️  STRATEGY LIMITATION: ${missingTickers.length} stocks not available at start date (${startDate}): ${missingTickers.join(', ')}`);
+    console.log(`ℹ️  Only ${validTickers.length} stocks will be used, reducing strategy differentiation`);
+  }
+  
   if (validTickers.length === 0) {
     console.log('No valid tickers found for buy-and-hold strategy, returning zero results');
     return {
