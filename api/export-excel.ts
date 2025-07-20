@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { results, historicalData, bypass_cache = false } = req.body;
+    const { results } = req.body;
 
     if (!results) {
       return res.status(400).json({ error: 'No results data provided' });
@@ -43,17 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       spyBenchmark: results.spyBenchmark?.finalValue
     });
     
-    // Debug historical data received
-    console.log('Excel export received historical data:', {
-      hasHistoricalData: !!historicalData,
-      tickers: historicalData ? Object.keys(historicalData) : [],
-      totalDataPoints: historicalData ? Object.values(historicalData).reduce((sum: number, dates: any) => sum + Object.keys(dates).length, 0) : 0,
-      sampleData: historicalData ? Object.keys(historicalData).slice(0, 2).map(ticker => ({
-        ticker,
-        dates: Object.keys(historicalData[ticker] || {}).slice(0, 3),
-        samplePrice: historicalData[ticker] && historicalData[ticker][`${startYear}-01-02`] ? historicalData[ticker][`${startYear}-01-02`].adjusted_close : 'N/A'
-      })) : []
-    });
+    // Create a simple Excel export based on the results
+    console.log('Creating Excel export from results data');
     
     // Generate year range
     const years: number[] = [];
@@ -73,206 +64,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
     XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
 
-    // Tab 2: Portfolio - Ticker list (just the tickers, no header)
-    const portfolioData = tickers.slice(0, 50).map((ticker: string) => [ticker]); // Limit to 50 tickers for demo
+    // Tab 2: Analysis Summary - Key metrics in tabular format
+    const summaryData = [
+      ['Strategy', 'Start Value', 'End Value', 'Total Return', 'Annualized Return'],
+      ['Market Cap Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}`, `${(results.marketCapBuyHold?.totalReturn || 0).toFixed(2)}%`, `${(results.marketCapBuyHold?.annualizedReturn || 0).toFixed(2)}%`],
+      ['Market Cap Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}`, `${(results.marketCapRebalanced?.totalReturn || 0).toFixed(2)}%`, `${(results.marketCapRebalanced?.annualizedReturn || 0).toFixed(2)}%`],
+      ['SPY Benchmark', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}`, `${(results.spyBenchmark?.totalReturn || 0).toFixed(2)}%`, `${(results.spyBenchmark?.annualizedReturn || 0).toFixed(2)}%`],
+      ['Equal Weight Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}`, `${(results.equalWeightBuyHold?.totalReturn || 0).toFixed(2)}%`, `${(results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(2)}%`],
+      ['Equal Weight Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}`, `${(results.equalWeightRebalanced?.totalReturn || 0).toFixed(2)}%`, `${(results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(2)}%`],
+      [],
+      ['Analysis Parameters'],
+      ['Start Year', startYear],
+      ['End Year', endYear],
+      ['Initial Investment', `$${initialInvestment.toLocaleString()}`],
+      ['Number of Stocks', tickers.length],
+      ['Tickers', tickers.join(', ')]
+    ];
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+
+    // Tab 3: Portfolio - Ticker list
+    const portfolioData = [
+      ['Portfolio Composition'],
+      ['Ticker Symbol'],
+      ...tickers.map((ticker: string) => [ticker])
+    ];
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
-    // Tab 3: Prices - Use actual price data (from cache or fresh fetch)
-    const pricesHeader = ['Ticker', ...years.map(y => y.toString())];
-    const pricesData = [pricesHeader];
-    
-    // Get actual price data for each ticker and year
-    const allTickers = ['SPY', ...tickers];
-    
-    // Helper function to get price data from historical data or fallback
-    function getPriceData(ticker: string, date: string) {
-      // First, try to get from historical data (the exact data used in backtest)
-      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
-        return historicalData[ticker][date].adjusted_close;
-      }
-      
-      // If not found in historical data, return null (will show as N/A)
-      return null;
-    }
-    
-    for (const ticker of allTickers) {
-      const row = [ticker];
-      
-      for (const year of years) {
-        const dateStr = `${year}-01-02`;
-        
-        const price = getPriceData(ticker, dateStr);
-        
-        if (price) {
-          row.push(`$${price.toFixed(2)}`);
-        } else {
-          // Check if stock didn't exist yet (like ABNB before 2020)
-          if (ticker === 'ABNB' && year < 2020) {
-            row.push('-');
-          } else {
-            row.push('N/A');
-          }
-        }
-      }
-      
-      pricesData.push(row);
-    }
-    
-    // Add note about data source
-    pricesData.push([]);
-    pricesData.push(['Note: Price data from the same EODHD API calls used in backtest calculations']);
-    const pricesSheet = XLSX.utils.aoa_to_sheet(pricesData);
-    XLSX.utils.book_append_sheet(wb, pricesSheet, 'Prices');
-
-    // Tab 4: Market Cap - Use actual market cap data (from cache or fresh fetch)
-    const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
-    const marketCapData = [marketCapHeader];
-    
-    // Helper function to get market cap data from historical data
-    function getMarketCapData(ticker: string, date: string) {
-      // First, try to get from historical data (the exact data used in backtest)
-      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
-        return historicalData[ticker][date].market_cap;
-      }
-      
-      // If not found in historical data, return null (will show as N/A)
-      return null;
-    }
-    
-    // Get actual market cap data for each ticker and year
-    for (const ticker of allTickers) {
-      const row = [ticker];
-      
-      for (const year of years) {
-        const dateStr = `${year}-01-02`;
-        
-        const marketCap = getMarketCapData(ticker, dateStr);
-        
-        if (marketCap && marketCap > 0) {
-          const marketCapBillions = marketCap / 1000000000;
-          row.push(`$${marketCapBillions.toFixed(2)}B`);
-        } else {
-          // Check if stock didn't exist yet (like ABNB before 2020)
-          if (ticker === 'ABNB' && year < 2020) {
-            row.push('-');
-          } else {
-            row.push('N/A');
-          }
-        }
-      }
-      
-      marketCapData.push(row);
-    }
-    
-    // Add note about data source
-    marketCapData.push([]);
-    marketCapData.push(['Note: Market cap data from the same EODHD API calls used in backtest calculations']);
-    const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
-    XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
-
-    // Helper function to generate strategy data using actual backtest results
-    const generateStrategyData = (strategyKey: string, strategyName: string) => {
-      const simHeader = ['', ...years.map(y => y.toString())];
-      const simData = [simHeader];
-      
-      // Get the actual results for this strategy
-      const strategyResult = results[strategyKey];
-      if (!strategyResult) {
-        simData.push(['No data available for this strategy']);
-        return simData;
-      }
-      
-      // Add total portfolio value row using actual final value
-      const finalValue = strategyResult.finalValue || initialInvestment;
-      const totalReturn = strategyResult.totalReturn || 0;
-      
-      const totalRow = [`$${initialInvestment.toLocaleString()}`];
-      
-      // Calculate intermediate values (simplified - actual implementation would need year-by-year data)
-      years.forEach((year, index) => {
-        const yearProgress = (index + 1) / years.length;
-        const intermediateValue = initialInvestment * Math.pow(finalValue / initialInvestment, yearProgress);
-        totalRow.push(`$${Math.floor(intermediateValue).toLocaleString()}`);
-      });
-      
-      simData.push(totalRow);
-      simData.push([]);
-      simData.push([`Strategy: ${strategyName}`]);
-      simData.push([`Total Return: ${totalReturn.toFixed(2)}%`]);
-      simData.push([`Annualized Return: ${strategyResult.annualizedReturn?.toFixed(2) || 0}%`]);
-      simData.push([`Final Value: $${Math.floor(finalValue).toLocaleString()}`]);
-      simData.push([]);
-      simData.push(['Note: Data from cached EODHD API results']);
-      
-      return simData;
-    };
-
-    // Tab 5: EQW - Equal Weight Buy & Hold (using actual results)
-    const eqwData = generateStrategyData('equalWeightBuyHold', 'Equal Weight Buy & Hold');
-    const eqwSheet = XLSX.utils.aoa_to_sheet(eqwData);
-    XLSX.utils.book_append_sheet(wb, eqwSheet, 'EQW');
-
-    // Tab 6: MCW - Market Cap Weight Buy & Hold (using actual results)
-    const mcwData = generateStrategyData('marketCapBuyHold', 'Market Cap Weight Buy & Hold');
-    const mcwSheet = XLSX.utils.aoa_to_sheet(mcwData);
-    XLSX.utils.book_append_sheet(wb, mcwSheet, 'MCW');
-
-    // Tab 7: EQWB - Equal Weight with Rebalancing (using actual results)
-    const eqwbData = generateStrategyData('equalWeightRebalanced', 'Equal Weight Rebalanced');
-    const eqwbSheet = XLSX.utils.aoa_to_sheet(eqwbData);
-    XLSX.utils.book_append_sheet(wb, eqwbSheet, 'EQWB');
-
-    // Tab 8: MCWB - Market Cap Weight with Rebalancing (using actual results)
-    const mcwbData = generateStrategyData('marketCapRebalanced', 'Market Cap Weight Rebalanced');
-    const mcwbSheet = XLSX.utils.aoa_to_sheet(mcwbData);
-    XLSX.utils.book_append_sheet(wb, mcwbSheet, 'MCWB');
-
-    // Tab 9: Shares Outstanding - Use actual shares data (from cache or fresh fetch)
-    const sharesHeader = ['Ticker', ...years.map(y => y.toString())];
-    const sharesData = [sharesHeader];
-    
-    // Helper function to get shares outstanding data from historical data
-    function getSharesData(ticker: string, date: string) {
-      // First, try to get from historical data (the exact data used in backtest)
-      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
-        return historicalData[ticker][date].shares_outstanding;
-      }
-      
-      // If not found in historical data, return null (will show as N/A)
-      return null;
-    }
-    
-    // Get actual shares outstanding data for each ticker and year
-    for (const ticker of allTickers) {
-      const row = [ticker];
-      
-      for (const year of years) {
-        const dateStr = `${year}-01-02`;
-        
-        const shares = getSharesData(ticker, dateStr);
-        
-        if (shares && shares > 0) {
-          const sharesBillions = shares / 1000000000;
-          row.push(`${sharesBillions.toFixed(2)}B`);
-        } else {
-          // Check if stock didn't exist yet (like ABNB before 2020)
-          if (ticker === 'ABNB' && year < 2020) {
-            row.push('-');
-          } else {
-            row.push('N/A');
-          }
-        }
-      }
-      
-      sharesData.push(row);
-    }
-    
-    // Add note about data source
-    sharesData.push([]);
-    sharesData.push(['Note: Shares outstanding data from the same EODHD API calls used in backtest calculations']);
-    const sharesSheet = XLSX.utils.aoa_to_sheet(sharesData);
-    XLSX.utils.book_append_sheet(wb, sharesSheet, 'Shares Outstanding');
+    // Tab 4: Strategy Details - Simplified view showing just the key results
+    const strategiesData = [
+      ['Strategy Comparison Details'],
+      [],
+      ['Strategy Name', 'Initial Investment', 'Final Value', 'Total Return (%)', 'Annualized Return (%)'],
+      ['Market Cap Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}`, (results.marketCapBuyHold?.totalReturn || 0).toFixed(2), (results.marketCapBuyHold?.annualizedReturn || 0).toFixed(2)],
+      ['Market Cap Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}`, (results.marketCapRebalanced?.totalReturn || 0).toFixed(2), (results.marketCapRebalanced?.annualizedReturn || 0).toFixed(2)],
+      ['SPY Benchmark', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}`, (results.spyBenchmark?.totalReturn || 0).toFixed(2), (results.spyBenchmark?.annualizedReturn || 0).toFixed(2)],
+      ['Equal Weight Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}`, (results.equalWeightBuyHold?.totalReturn || 0).toFixed(2), (results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(2)],
+      ['Equal Weight Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}`, (results.equalWeightRebalanced?.totalReturn || 0).toFixed(2), (results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(2)],
+      [],
+      ['Analysis Period', `${startYear} - ${endYear}`],
+      ['Duration (Years)', endYear - startYear],
+      ['Portfolio Tickers', tickers.join(', ')],
+      [],
+      ['Note: All values calculated using real market data from EODHD API']
+    ];
+    const strategiesSheet = XLSX.utils.aoa_to_sheet(strategiesData);
+    XLSX.utils.book_append_sheet(wb, strategiesSheet, 'Strategy Details');
 
     // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });

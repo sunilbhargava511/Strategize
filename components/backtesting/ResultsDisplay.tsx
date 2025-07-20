@@ -27,9 +27,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          results,
-          historicalData: results.historicalData,
-          bypass_cache: bypassCache
+          results
         })
       });
 
