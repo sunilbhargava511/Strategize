@@ -199,6 +199,12 @@ async function tryFetchPriceForDate(ticker: string, date: string, apiToken: stri
 // Get shares outstanding from EODHD fundamentals API
 async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
   try {
+    // Special handling for ETFs like SPY - they don't have traditional balance sheet data
+    if (ticker.toUpperCase() === 'SPY' || ticker.toUpperCase() === 'SPY.US') {
+      console.log(`📊 Using known SPY shares outstanding (~900M shares for historical calculations)`);
+      return 900000000; // SPY typically has around 900M shares outstanding
+    }
+    
     // Convert date string to Date object to find the target year
     const targetDate = new Date(date);
     
