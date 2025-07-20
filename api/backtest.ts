@@ -749,6 +749,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Collect historical data used in calculations for consistent Excel export
     const historicalData: Record<string, Record<string, any>> = {};
     
+    // Pre-populate historical data for Excel export (fetch data for each year)
+    console.log('Pre-fetching yearly data for Excel export consistency...');
+    const allTickersForData = ['SPY', ...processedTickers];
+    for (const ticker of allTickersForData) {
+      for (let year = startYear; year <= endYear; year++) {
+        const yearDate = `${year}-01-02`;
+        try {
+          await fetchStockData(ticker, yearDate, bypass_cache, historicalData);
+        } catch (error) {
+          console.log(`Could not fetch ${ticker} data for ${yearDate}:`, error);
+        }
+      }
+    }
+    
+    // Debug: Log historical data collected
+    console.log('Historical data collected for Excel export:', {
+      tickers: Object.keys(historicalData),
+      totalDataPoints: Object.values(historicalData).reduce((sum, dates) => sum + Object.keys(dates).length, 0),
+      sampleData: Object.keys(historicalData).slice(0, 2).map(ticker => ({
+        ticker,
+        dates: Object.keys(historicalData[ticker]).slice(0, 3)
+      }))
+    });
+    
     const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
       calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData),
       calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData),

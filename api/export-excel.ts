@@ -43,35 +43,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       spyBenchmark: results.spyBenchmark?.finalValue
     });
     
-    // Test cache access for debugging
-    console.log('Testing cache access for debugging...');
-    try {
-      const testKey = `market-cap:${tickers[0]}:${startYear}-01-02`;
-      const testData = await cache.get(testKey);
-      console.log(`Cache test for ${testKey}:`, testData ? { found: true, keys: Object.keys(testData) } : 'No data');
-      
-      // Also try a few other common patterns
-      const testKey2 = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickers.sort().join(',')}`;
-      const backTestData = await cache.get(testKey2);
-      console.log(`Backtest cache test for ${testKey2}:`, backTestData ? 'Backtest data found' : 'No backtest data');
-      
-      // Try to find what cache keys actually exist by testing variations
-      const variations = [
-        `market-cap:${tickers[0].toUpperCase()}:${startYear}-01-02`,
-        `price:${tickers[0]}:${startYear}-01-02`,
-        `stock:${tickers[0]}:${startYear}-01-02`
-      ];
-      
-      for (const varKey of variations) {
-        const varData = await cache.get(varKey);
-        if (varData) {
-          console.log(`Found cache data with key pattern: ${varKey}`, Object.keys(varData));
-          break;
-        }
-      }
-    } catch (error) {
-      console.error('Cache test failed:', error);
-    }
+    // Debug historical data received
+    console.log('Excel export received historical data:', {
+      hasHistoricalData: !!historicalData,
+      tickers: historicalData ? Object.keys(historicalData) : [],
+      totalDataPoints: historicalData ? Object.values(historicalData).reduce((sum, dates) => sum + Object.keys(dates).length, 0) : 0,
+      sampleData: historicalData ? Object.keys(historicalData).slice(0, 2).map(ticker => ({
+        ticker,
+        dates: Object.keys(historicalData[ticker] || {}).slice(0, 3),
+        samplePrice: historicalData[ticker] && historicalData[ticker][`${startYear}-01-02`] ? historicalData[ticker][`${startYear}-01-02`].adjusted_close : 'N/A'
+      })) : []
+    });
     
     // Generate year range
     const years: number[] = [];
