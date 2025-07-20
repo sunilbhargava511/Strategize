@@ -45,7 +45,8 @@ export default function Home() {
           strategies: selectedStrategies,
           startYear: configuration.startYear,
           endYear: configuration.endYear,
-          initialInvestment: configuration.initialInvestment
+          initialInvestment: configuration.initialInvestment,
+          bypass_cache: !configuration.useCache
         })
       })
 
