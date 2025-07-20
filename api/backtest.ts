@@ -155,7 +155,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    console.log('=== BACKTEST API CALLED ===');
     const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
+    console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache });
 
     // Validate inputs
     if (!startYear || !endYear || !initialInvestment) {
@@ -187,6 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Check if we have EODHD API token
     if (!process.env.EODHD_API_TOKEN) {
+      console.log('No EODHD_API_TOKEN found, returning mock data');
       // Return mock data if no API token
       const yearRange = endYear - startYear;
       const baseReturn = 8 + (Math.random() * 4);
@@ -234,7 +237,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Calculate real results using EODHD data
-    console.log(`Running backtest for ${tickers.length} tickers from ${startYear} to ${endYear}`);
+    console.log(`EODHD_API_TOKEN found, running real backtest for ${tickers.length} tickers from ${startYear} to ${endYear}`);
     
     const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced] = await Promise.all([
       calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
