@@ -117,11 +117,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     tickers.slice(0, 30).forEach((ticker: string) => {
       const row = [ticker];
       years.forEach((year, index) => {
-        // Simulate market cap: start at $10-50B, grow with stock price
-        const baseMarketCap = 15000000000 + (ticker.charCodeAt(0) * 1000000000);
-        const growthRate = 0.09 + (Math.random() * 0.06);
-        const marketCap = baseMarketCap * Math.pow(1 + growthRate, index) * (0.85 + Math.random() * 0.3);
-        row.push(`$${Math.floor(marketCap).toLocaleString()}.00`);
+        // Handle stock availability - ABNB didn't exist before 2020
+        const isAvailable = ticker === 'SPY' || 
+                           ticker === 'AAPL' || ticker === 'MSFT' || 
+                           (ticker === 'ABNB' && year >= 2020);
+        
+        if (!isAvailable) {
+          row.push('-'); // Show dash for non-existent years
+        } else {
+          // Simulate market cap: start at $10-50B, grow with stock price
+          const baseMarketCap = 15000000000 + (ticker.charCodeAt(0) * 1000000000);
+          const growthRate = 0.09 + (Math.random() * 0.06);
+          const marketCap = baseMarketCap * Math.pow(1 + growthRate, index) * (0.85 + Math.random() * 0.3);
+          row.push(`$${Math.floor(marketCap).toLocaleString()}.00`);
+        }
       });
       marketCapData.push(row);
     });
@@ -130,14 +139,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Helper function to simulate stock availability (some stocks become available later)
     const getAvailableStocks = (year: number, allTickers: string[]) => {
-      // For now, make all stocks available from the start to debug the zero values issue
-      // Later we can add gradual availability
-      return allTickers;
-      
-      // Original logic (commented out for debugging):
-      // const yearIndex = years.indexOf(year);
-      // const availabilityThreshold = yearIndex / years.length;
-      // return allTickers.filter((_, index) => (index / allTickers.length) <= availabilityThreshold + 0.5);
+      // Filter based on actual stock availability dates
+      return allTickers.filter(ticker => {
+        if (ticker === 'AAPL' || ticker === 'MSFT' || ticker === 'SPY') {
+          return true; // These have been around since before 2010
+        }
+        if (ticker === 'ABNB') {
+          return year >= 2020; // ABNB IPO was in 2020
+        }
+        // For other stocks, assume they've been available since start year for now
+        return true;
+      });
     };
 
     // Helper function to generate simulation data with proper algorithm logic
@@ -162,17 +174,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let baseMarketCap = 15000000000 + (ticker.charCodeAt(0) * 1000000000);
         
         years.forEach((year, index) => {
-          const priceGrowth = baseGrowth + (Math.random() - 0.5) * (volatility * 1.5);
-          const marketCapGrowth = baseGrowth + (Math.random() - 0.5) * volatility;
+          // Check if stock is available this year
+          const isAvailable = ticker === 'AAPL' || ticker === 'MSFT' || ticker === 'SPY' || 
+                             (ticker === 'ABNB' && year >= 2020);
           
-          if (index === 0) {
-            stockPrices[ticker].push(basePrice);
-            stockMarketCaps[ticker].push(baseMarketCap);
+          if (!isAvailable) {
+            stockPrices[ticker].push(0); // Use 0 to indicate unavailable
+            stockMarketCaps[ticker].push(0);
           } else {
-            basePrice *= (1 + priceGrowth);
-            baseMarketCap *= (1 + marketCapGrowth);
-            stockPrices[ticker].push(basePrice);
-            stockMarketCaps[ticker].push(baseMarketCap);
+            const priceGrowth = baseGrowth + (Math.random() - 0.5) * (volatility * 1.5);
+            const marketCapGrowth = baseGrowth + (Math.random() - 0.5) * volatility;
+            
+            if (index === 0 || stockPrices[ticker][index - 1] === 0) {
+              // First available year for this stock
+              stockPrices[ticker].push(basePrice);
+              stockMarketCaps[ticker].push(baseMarketCap);
+            } else {
+              basePrice *= (1 + priceGrowth);
+              baseMarketCap *= (1 + marketCapGrowth);
+              stockPrices[ticker].push(basePrice);
+              stockMarketCaps[ticker].push(baseMarketCap);
+            }
           }
         });
       });
@@ -184,17 +206,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const availableStocks = getAvailableStocks(year, tickers.slice(0, 30));
         
         if (yearIndex === 0) {
-          // Initial allocation
+          // Initial allocation - only invest in available stocks
           if (isEqualWeight) {
             const equalAllocation = portfolioValue / availableStocks.length;
             availableStocks.forEach((ticker: string) => {
-              const shares = equalAllocation / stockPrices[ticker][yearIndex];
-              stockHoldings[ticker] = { shares, value: equalAllocation };
+              if (stockPrices[ticker][yearIndex] > 0) { // Only if stock is available
+                const shares = equalAllocation / stockPrices[ticker][yearIndex];
+                stockHoldings[ticker] = { shares, value: equalAllocation };
+              }
             });
           } else {
-            // Market cap weighted
-            const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
-            availableStocks.forEach((ticker: string) => {
+            // Market cap weighted - only use available stocks
+            const availableMarketCaps = availableStocks.filter(ticker => stockMarketCaps[ticker][yearIndex] > 0);
+            const totalMarketCap = availableMarketCaps.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+            availableMarketCaps.forEach((ticker: string) => {
               const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
               const allocation = portfolioValue * weight;
               const shares = allocation / stockPrices[ticker][yearIndex];
@@ -203,11 +228,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
           totalRow.push(`$${Math.floor(portfolioValue).toLocaleString()}`);
         } else {
-          // Update portfolio value based on price changes
+          // Update portfolio value based on price changes (only for available stocks)
           portfolioValue = 0;
           Object.keys(stockHoldings).forEach((ticker: string) => {
-            stockHoldings[ticker].value = stockHoldings[ticker].shares * stockPrices[ticker][yearIndex];
-            portfolioValue += stockHoldings[ticker].value;
+            if (stockPrices[ticker][yearIndex] > 0) { // Only if stock is still available
+              stockHoldings[ticker].value = stockHoldings[ticker].shares * stockPrices[ticker][yearIndex];
+              portfolioValue += stockHoldings[ticker].value;
+            } else {
+              // Stock no longer available (delisted/defunct)
+              stockHoldings[ticker].value = 0;
+            }
           });
           
           if (isRebalanced) {
@@ -389,11 +419,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         // Record each stock's value for this year
         tickers.slice(0, 30).forEach((ticker: string) => {
-          if (stockHoldingsTracker[ticker]) {
+          const isAvailable = ticker === 'AAPL' || ticker === 'MSFT' || ticker === 'SPY' || 
+                             (ticker === 'ABNB' && year >= 2020);
+          
+          if (!isAvailable) {
+            stockTimeSeriesData[ticker].push('-'); // Show dash for unavailable stocks
+          } else if (stockHoldingsTracker[ticker]) {
             const value = stockHoldingsTracker[ticker].value;
             stockTimeSeriesData[ticker].push(`$${Math.floor(value).toLocaleString()}`);
           } else {
-            stockTimeSeriesData[ticker].push(''); // Stock not available yet
+            stockTimeSeriesData[ticker].push('$0'); // Available but not held
           }
         });
       });

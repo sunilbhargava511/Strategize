@@ -33,6 +33,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tickerStr = ticker as string;
     const dateStr = date as string || new Date().toISOString().split('T')[0];
     const bypassCache = bypass_cache === 'true';
+    
+    // Check stock availability before making API calls
+    const requestDate = new Date(dateStr);
+    const requestYear = requestDate.getFullYear();
+    
+    // Known stock availability dates
+    const stockAvailability: Record<string, number> = {
+      'ABNB': 2020, // Airbnb IPO December 2020
+      // Add other stocks with known availability dates here
+    };
+    
+    const availableFromYear = stockAvailability[tickerStr.toUpperCase()];
+    if (availableFromYear && requestYear < availableFromYear) {
+      console.log(`📅 ${tickerStr} not available in ${requestYear}, first available in ${availableFromYear}`);
+      return res.status(404).json({ 
+        error: 'Stock not available',
+        message: `${tickerStr} was not publicly traded in ${requestYear}. First available: ${availableFromYear}`,
+        ticker: tickerStr,
+        date: dateStr,
+        available_from_year: availableFromYear,
+        is_not_yet_available: true
+      });
+    }
 
     // Check cache first (unless bypassed)
     const cacheKey = `market-cap:${tickerStr}:${dateStr}`;
