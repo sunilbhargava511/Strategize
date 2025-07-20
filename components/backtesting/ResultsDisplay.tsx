@@ -37,7 +37,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'backtest-results.csv';
+      a.download = `Portfolio Simulation Results-${new Date().toISOString().split('T')[0]}.xlsx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

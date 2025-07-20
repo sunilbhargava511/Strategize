@@ -50,8 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
     XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
 
-    // Tab 2: Portfolio - Ticker list
-    const portfolioData = [['A'], ...tickers.slice(0, 50).map((ticker: string) => [ticker])]; // Limit to 50 tickers for demo
+    // Tab 2: Portfolio - Ticker list (just the tickers, no header)
+    const portfolioData = tickers.slice(0, 50).map((ticker: string) => [ticker]); // Limit to 50 tickers for demo
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pricesData = [pricesHeader];
     
     // Add SPY and RSP first, then portfolio tickers
-    ['SPY', 'RSP', 'A', ...tickers.slice(0, 30)].forEach(ticker => {
+    ['SPY', 'RSP', ...tickers.slice(0, 30)].forEach(ticker => {
       const row = [ticker];
       years.forEach((year, index) => {
         // Simulate price growth: start at ~$50-300, grow 8-15% annually with some variation
@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
     const marketCapData = [marketCapHeader];
     
-    ['A', ...tickers.slice(0, 30)].forEach(ticker => {
+    tickers.slice(0, 30).forEach(ticker => {
       const row = [ticker];
       years.forEach((year, index) => {
         // Simulate market cap: start at $10-50B, grow with stock price
@@ -97,6 +97,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const simHeader = ['', ...years.map(y => y.toString())];
       const simData = [simHeader];
       
+      // Calculate equal weight allocation per stock
+      const stockAllocation = Math.floor(initialInvestment / (tickers.length || 1));
+      
       // Add total portfolio value row
       const totalRow = [`$${initialInvestment.toLocaleString()}`];
       let currentValue = initialInvestment;
@@ -112,14 +115,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       simData.push(totalRow);
       
-      // Add individual stock rows
-      ['A', ...tickers.slice(0, 30)].forEach(ticker => {
-        const row = [`$${Math.floor(initialInvestment / (tickers.length || 10)).toLocaleString()}`]; // Initial allocation
-        let stockValue = initialInvestment / (tickers.length || 10);
+      // Add individual stock rows with equal allocation
+      tickers.slice(0, 30).forEach(ticker => {
+        const row = [`$${stockAllocation.toLocaleString()}`]; // Equal allocation for each stock
+        let stockValue = stockAllocation;
         
         years.forEach((year, index) => {
           if (index === 0) {
-            row.push(`$${Math.floor(stockValue).toLocaleString()}`);
+            row.push(`$${stockValue.toLocaleString()}`);
           } else {
             const stockGrowth = baseGrowth + (Math.random() - 0.5) * (volatility * 1.5); // Individual stocks more volatile
             stockValue *= (1 + stockGrowth);
