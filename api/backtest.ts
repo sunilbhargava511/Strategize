@@ -199,34 +199,83 @@ async function tryFetchPriceForDate(ticker: string, date: string, apiToken: stri
 // Get shares outstanding from EODHD fundamentals API
 async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
   try {
-    const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json`;
+    // Convert date string to Date object to find the target year
+    const targetDate = new Date(date);
     
-    const response = await fetch(fundamentalsUrl);
+    // Get quarterly balance sheet data to find historical shares outstanding
+    const quarterlyUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json&filter=Financials::Balance_Sheet::quarterly`;
+    
+    const response = await fetch(quarterlyUrl);
     if (!response.ok) {
-      console.error(`EODHD fundamentals API error for ${ticker}: ${response.status}`);
+      console.error(`EODHD quarterly fundamentals API error for ${ticker}: ${response.status}`);
       return null;
     }
     
     const data = await response.json();
     
-    // Check multiple possible paths for shares outstanding (following market-cap-fetcher pattern)
-    const sharesOutstanding = 
-      data?.SharesStats?.SharesOutstanding ||
-      data?.Highlights?.SharesOutstanding ||
-      data?.General?.SharesOutstanding ||
-      data?.shareStatsSharesOutstanding ||
-      data?.outstandingShares;
-
-    if (sharesOutstanding && sharesOutstanding > 0) {
-      console.log(`📊 Found shares outstanding for ${ticker}: ${sharesOutstanding.toLocaleString()}`);
-      return sharesOutstanding;
+    if (!data || typeof data !== 'object') {
+      console.error(`❌ No quarterly balance sheet data for ${ticker}`);
+      return null;
     }
     
-    console.error(`❌ No shares outstanding data found for ${ticker} in fundamentals API`);
-    return null;
+    const availableDates = Object.keys(data);
+    
+    // Filter to only dates before target date
+    const validDates = availableDates.filter(d => {
+      try {
+        const quarterDate = new Date(d);
+        return quarterDate < targetDate;
+      } catch {
+        return false;
+      }
+    });
+    
+    if (validDates.length === 0) {
+      console.error(`❌ No quarterly data available before ${date} for ${ticker}`);
+      return null;
+    }
+    
+    // Get the most recent quarter before the target date
+    const bestDate = validDates.reduce((latest, current) => {
+      return new Date(current) > new Date(latest) ? current : latest;
+    });
+    
+    // Fetch shares outstanding for that specific quarter
+    const filterParam = `Financials::Balance_Sheet::quarterly::${bestDate}::commonStockSharesOutstanding`;
+    const sharesUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json&filter=${filterParam}`;
+    
+    const sharesResponse = await fetch(sharesUrl);
+    if (!sharesResponse.ok) {
+      console.error(`❌ Error fetching shares outstanding for ${ticker} on ${bestDate}: ${sharesResponse.status}`);
+      return null;
+    }
+    
+    const sharesText = await sharesResponse.text();
+    
+    if (!sharesText || sharesText.trim() === 'null' || sharesText.trim() === '' || sharesText.trim() === '[]') {
+      console.error(`❌ No shares outstanding data for ${ticker} on ${bestDate}`);
+      return null;
+    }
+    
+    try {
+      // Parse the response (remove quotes if present)
+      const sharesOutstanding = parseFloat(sharesText.trim().replace(/"/g, ''));
+      
+      if (isNaN(sharesOutstanding) || sharesOutstanding <= 0) {
+        console.error(`❌ Invalid shares outstanding value for ${ticker} on ${bestDate}: ${sharesText}`);
+        return null;
+      }
+      
+      console.log(`📊 Found historical shares outstanding for ${ticker} (${bestDate} for ${date}): ${sharesOutstanding.toLocaleString()}`);
+      return sharesOutstanding;
+      
+    } catch (error) {
+      console.error(`❌ Error parsing shares outstanding for ${ticker} on ${bestDate}: ${sharesText}`, error);
+      return null;
+    }
     
   } catch (error) {
-    console.error(`❌ Error fetching fundamentals for ${ticker}:`, error);
+    console.error(`❌ Error fetching historical shares outstanding for ${ticker}:`, error);
     return null;
   }
 }
@@ -408,7 +457,13 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
       const missingData = [];
       if (!adjustedPrice) missingData.push('adjusted price');
       if (!sharesOutstanding) missingData.push('shares outstanding');
-      console.log(`❌ Cannot calculate market cap for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
+      
+      // Special error message for stocks with price but no shares outstanding
+      if (adjustedPrice && !sharesOutstanding) {
+        console.error(`🚨 ERROR: ${ticker} ${year} has PRICE ($${adjustedPrice.toFixed(2)}) but NO SHARES OUTSTANDING from EODHD fundamentals API`);
+      } else {
+        console.log(`❌ Cannot calculate market cap for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
+      }
       return null;
     }
     
@@ -445,6 +500,7 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
     return null;
   }
 }
+
 
 async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false, historicalData?: Record<string, Record<string, any>>): Promise<StockData | null> {
   try {
@@ -679,7 +735,19 @@ async function calculateRebalancedStrategy(
         const marketCap = await getMarketCapForYear(ticker, year, bypassCache);
         if (marketCap) {
           stockMarketCaps[ticker] = marketCap;
+          successfulMarketCapData.push({ticker, year, marketCap});
         } else {
+          // Track detailed information about what's missing
+          const hasPrice = await getAdjustedPriceForYear(ticker, year, bypassCache);
+          const hasSharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
+          
+          missingMarketCapData.push({
+            ticker, 
+            year, 
+            hasPrice: !!hasPrice, 
+            hasSharesOutstanding: !!hasSharesOutstanding
+          });
+          
           console.error(`❌ SKIPPING ${ticker}: Could not get real market cap for ${year}`);
           // Skip this stock entirely if we can't get real market cap data
           availableStocks.splice(availableStocks.indexOf(ticker), 1);
@@ -764,6 +832,10 @@ async function calculateStrategy(
   bypassCache: boolean = false,
   historicalData?: Record<string, Record<string, any>>
 ): Promise<StrategyResult> {
+  // Track missing market cap data for detailed error reporting
+  const missingMarketCapData: Array<{ticker: string, year: number, hasPrice: boolean, hasSharesOutstanding: boolean}> = [];
+  const successfulMarketCapData: Array<{ticker: string, year: number, marketCap: number}> = [];
+  
   const yearlyValues: Record<number, number> = {};
   const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>> = {};
   const portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }> = {};
@@ -1123,6 +1195,40 @@ async function calculateStrategy(
   const yearsDuration = endYear - startYear;
   const annualizedReturn = yearsDuration > 0 ? (Math.pow(currentValue / initialInvestment, 1 / yearsDuration) - 1) * 100 : totalReturn;
   
+  // Report missing market cap data if any
+  if (missingMarketCapData.length > 0) {
+    console.log(`\n🚨 MARKET CAP DATA DIAGNOSTIC FOR ${strategyType.toUpperCase()} ${rebalance ? 'REBALANCED' : 'BUY & HOLD'}:`);
+    console.log(`📊 Successfully got market cap: ${successfulMarketCapData.length} stocks`);
+    console.log(`❌ Failed to get market cap: ${missingMarketCapData.length} stocks`);
+    
+    // Group by issue type
+    const stocksWithPriceButNoShares = missingMarketCapData.filter(item => item.hasPrice && !item.hasSharesOutstanding);
+    const stocksWithNeitherPriceNorShares = missingMarketCapData.filter(item => !item.hasPrice && !item.hasSharesOutstanding);
+    const stocksWithSharesButNoPrice = missingMarketCapData.filter(item => !item.hasPrice && item.hasSharesOutstanding);
+    
+    if (stocksWithPriceButNoShares.length > 0) {
+      console.log(`\n🚨 STOCKS WITH PRICE BUT NO SHARES OUTSTANDING (${stocksWithPriceButNoShares.length}):`);
+      stocksWithPriceButNoShares.forEach(item => 
+        console.log(`   ${item.ticker} (${item.year}): Has price, missing shares outstanding from EODHD fundamentals API`)
+      );
+    }
+    
+    if (stocksWithNeitherPriceNorShares.length > 0) {
+      console.log(`\n❌ STOCKS WITH NO PRICE OR SHARES DATA (${stocksWithNeitherPriceNorShares.length}):`);
+      stocksWithNeitherPriceNorShares.forEach(item => 
+        console.log(`   ${item.ticker} (${item.year}): Missing both price and shares outstanding`)
+      );
+    }
+    
+    if (stocksWithSharesButNoPrice.length > 0) {
+      console.log(`\n💰 STOCKS WITH SHARES BUT NO PRICE (${stocksWithSharesButNoPrice.length}):`);
+      stocksWithSharesButNoPrice.forEach(item => 
+        console.log(`   ${item.ticker} (${item.year}): Has shares outstanding, missing price`)
+      );
+    }
+    console.log(`\n`);
+  }
+
   return {
     totalReturn,
     annualizedReturn,
