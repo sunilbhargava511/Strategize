@@ -103,47 +103,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Get actual price data for each ticker and year
     const allTickers = ['SPY', ...tickers];
     
-    // Helper function to fetch price data
-    async function fetchPriceData(ticker: string, date: string) {
-      if (bypass_cache) {
-        // When cache is bypassed, fetch fresh data from EODHD
-        try {
-          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
-          if (!EOD_API_KEY) {
-            return null;
-          }
-          
-          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
-          const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
-          
-          const response = await fetch(priceUrl);
-          if (!response.ok) {
-            return null;
-          }
-          
-          const data = await response.json();
-          if (!data || !Array.isArray(data) || data.length === 0) {
-            return null;
-          }
-          
-          const dayData = data[0];
-          return dayData?.adjusted_close || dayData?.close;
-        } catch (error) {
-          console.error(`Error fetching fresh price for ${ticker} on ${date}:`, error);
-          return null;
-        }
-      } else {
-        // Use cached data
-        try {
-          const cacheKey = `market-cap:${ticker}:${date}`;
-          const cachedData = await cache.get(cacheKey) as any;
-          console.log(`Cache lookup for ${cacheKey}:`, cachedData ? { hasData: true, hasPrice: !!cachedData.adjusted_close, price: cachedData.adjusted_close } : 'No data');
-          return cachedData?.adjusted_close;
-        } catch (error) {
-          console.error(`Error reading price cache for ${ticker} ${date}:`, error);
-          return null;
-        }
+    // Helper function to get price data from historical data or fallback
+    function getPriceData(ticker: string, date: string) {
+      // First, try to get from historical data (the exact data used in backtest)
+      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
+        return historicalData[ticker][date].adjusted_close;
       }
+      
+      // If not found in historical data, return null (will show as N/A)
+      return null;
     }
     
     for (const ticker of allTickers) {
@@ -152,7 +120,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const year of years) {
         const dateStr = `${year}-01-02`;
         
-        const price = await fetchPriceData(ticker, dateStr);
+        const price = getPriceData(ticker, dateStr);
         
         if (price) {
           row.push(`$${price.toFixed(2)}`);
@@ -171,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Add note about data source
     pricesData.push([]);
-    pricesData.push([`Note: Price data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
+    pricesData.push(['Note: Price data from the same EODHD API calls used in backtest calculations']);
     const pricesSheet = XLSX.utils.aoa_to_sheet(pricesData);
     XLSX.utils.book_append_sheet(wb, pricesSheet, 'Prices');
 
@@ -179,43 +147,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
     const marketCapData = [marketCapHeader];
     
-    // Helper function to fetch market cap data
-    async function fetchMarketCapData(ticker: string, date: string) {
-      if (bypass_cache) {
-        // When cache is bypassed, fetch fresh data from EODHD
-        try {
-          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
-          if (!EOD_API_KEY) {
-            return null;
-          }
-          
-          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
-          
-          // Fetch fundamentals data for market cap
-          const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
-          const fundamentalsResponse = await fetch(fundamentalsUrl);
-          
-          if (!fundamentalsResponse.ok) {
-            return null;
-          }
-          
-          const fundamentalsData = await fundamentalsResponse.json();
-          return fundamentalsData?.Highlights?.MarketCapitalization || null;
-        } catch (error) {
-          console.error(`Error fetching fresh market cap for ${ticker} on ${date}:`, error);
-          return null;
-        }
-      } else {
-        // Use cached data
-        try {
-          const cacheKey = `market-cap:${ticker}:${date}`;
-          const cachedData = await cache.get(cacheKey) as any;
-          return cachedData?.market_cap;
-        } catch (error) {
-          console.error(`Error reading market cap cache for ${ticker} ${date}:`, error);
-          return null;
-        }
+    // Helper function to get market cap data from historical data
+    function getMarketCapData(ticker: string, date: string) {
+      // First, try to get from historical data (the exact data used in backtest)
+      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
+        return historicalData[ticker][date].market_cap;
       }
+      
+      // If not found in historical data, return null (will show as N/A)
+      return null;
     }
     
     // Get actual market cap data for each ticker and year
@@ -225,7 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const year of years) {
         const dateStr = `${year}-01-02`;
         
-        const marketCap = await fetchMarketCapData(ticker, dateStr);
+        const marketCap = getMarketCapData(ticker, dateStr);
         
         if (marketCap && marketCap > 0) {
           const marketCapBillions = marketCap / 1000000000;
@@ -245,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Add note about data source
     marketCapData.push([]);
-    marketCapData.push([`Note: Market cap data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
+    marketCapData.push(['Note: Market cap data from the same EODHD API calls used in backtest calculations']);
     const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
     XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
 
@@ -310,44 +250,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sharesHeader = ['Ticker', ...years.map(y => y.toString())];
     const sharesData = [sharesHeader];
     
-    // Helper function to fetch shares outstanding data
-    async function fetchSharesData(ticker: string, date: string) {
-      if (bypass_cache) {
-        // When cache is bypassed, fetch fresh data from EODHD
-        try {
-          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
-          if (!EOD_API_KEY) {
-            return null;
-          }
-          
-          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
-          
-          // Fetch fundamentals data for shares outstanding
-          const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
-          const fundamentalsResponse = await fetch(fundamentalsUrl);
-          
-          if (!fundamentalsResponse.ok) {
-            return null;
-          }
-          
-          const fundamentalsData = await fundamentalsResponse.json();
-          return fundamentalsData?.Highlights?.SharesOutstanding || 
-                 fundamentalsData?.SharesStats?.SharesOutstanding || null;
-        } catch (error) {
-          console.error(`Error fetching fresh shares data for ${ticker} on ${date}:`, error);
-          return null;
-        }
-      } else {
-        // Use cached data
-        try {
-          const cacheKey = `market-cap:${ticker}:${date}`;
-          const cachedData = await cache.get(cacheKey) as any;
-          return cachedData?.shares_outstanding;
-        } catch (error) {
-          console.error(`Error reading shares cache for ${ticker} ${date}:`, error);
-          return null;
-        }
+    // Helper function to get shares outstanding data from historical data
+    function getSharesData(ticker: string, date: string) {
+      // First, try to get from historical data (the exact data used in backtest)
+      if (historicalData && historicalData[ticker] && historicalData[ticker][date]) {
+        return historicalData[ticker][date].shares_outstanding;
       }
+      
+      // If not found in historical data, return null (will show as N/A)
+      return null;
     }
     
     // Get actual shares outstanding data for each ticker and year
@@ -357,7 +268,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       for (const year of years) {
         const dateStr = `${year}-01-02`;
         
-        const shares = await fetchSharesData(ticker, dateStr);
+        const shares = getSharesData(ticker, dateStr);
         
         if (shares && shares > 0) {
           const sharesBillions = shares / 1000000000;
@@ -377,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Add note about data source
     sharesData.push([]);
-    sharesData.push([`Note: Shares outstanding data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
+    sharesData.push(['Note: Shares outstanding data from the same EODHD API calls used in backtest calculations']);
     const sharesSheet = XLSX.utils.aoa_to_sheet(sharesData);
     XLSX.utils.book_append_sheet(wb, sharesSheet, 'Shares Outstanding');
 

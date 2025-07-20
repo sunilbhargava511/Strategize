@@ -144,7 +144,7 @@ async function fetchMarketCapData(ticker: string, date: string, bypassCache: boo
   }
 }
 
-async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
+async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false, historicalData?: Record<string, Record<string, any>>): Promise<StockData | null> {
   try {
     // Check cache first unless bypassed
     const cacheKey = `market-cap:${ticker}:${date}`;
@@ -268,6 +268,22 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
       adjusted_close: dayData.adjusted_close || dayData.close
     };
     
+    // Store historical data for Excel export consistency
+    if (historicalData) {
+      if (!historicalData[ticker]) {
+        historicalData[ticker] = {};
+      }
+      historicalData[ticker][date] = {
+        ...result,
+        open: dayData.open,
+        high: dayData.high,
+        low: dayData.low,
+        volume: dayData.volume,
+        market_cap: 0, // Will be populated by fetchMarketCapData if needed
+        shares_outstanding: 0
+      };
+    }
+    
     // Store in cache for future use (permanent cache for historical data)
     if (!bypassCache) {
       try {
@@ -327,7 +343,8 @@ async function calculateRebalancedStrategy(
   endYear: number,
   initialInvestment: number,
   strategyType: 'equalWeight' | 'marketCap',
-  bypassCache: boolean = false
+  bypassCache: boolean = false,
+  historicalData?: Record<string, Record<string, any>>
 ): Promise<number> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
@@ -344,8 +361,8 @@ async function calculateRebalancedStrategy(
     const stockMarketCaps: Record<string, number> = {};
     
     for (const ticker of tickers) {
-      const startData = await fetchStockData(ticker, yearStart, bypassCache);
-      const endData = await fetchStockData(ticker, yearEnd, bypassCache);
+      const startData = await fetchStockData(ticker, yearStart, bypassCache, historicalData);
+      const endData = await fetchStockData(ticker, yearEnd, bypassCache, historicalData);
       
       if (startData && endData) {
         availableStocks.push(ticker);
@@ -419,7 +436,8 @@ async function calculateStrategy(
   initialInvestment: number,
   strategyType: 'equalWeight' | 'marketCap',
   rebalance: boolean,
-  bypassCache: boolean = false
+  bypassCache: boolean = false,
+  historicalData?: Record<string, Record<string, any>>
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
   let currentValue = initialInvestment;
@@ -441,8 +459,8 @@ async function calculateStrategy(
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
   for (const ticker of tickers) {
-    const startData = await fetchStockData(ticker, startDate, bypassCache);
-    const endData = await fetchStockData(ticker, endDate, bypassCache);
+    const startData = await fetchStockData(ticker, startDate, bypassCache, historicalData);
+    const endData = await fetchStockData(ticker, endDate, bypassCache, historicalData);
     
     tickerAvailability[ticker] = {
       hasStart: !!startData,
@@ -523,7 +541,7 @@ async function calculateStrategy(
     // REBALANCED STRATEGY: Year-by-year simulation with dynamic stock addition
     console.log(`Starting ${strategyType} rebalanced strategy simulation`);
     currentValue = await calculateRebalancedStrategy(
-      tickers, startYear, endYear, initialInvestment, strategyType, bypassCache
+      tickers, startYear, endYear, initialInvestment, strategyType, bypassCache, historicalData
     );
   } else {
     // BUY & HOLD STRATEGY: Simple start-to-end calculation
@@ -728,12 +746,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Calculate real results using EODHD data
     console.log(`EODHD_API_TOKEN found, running real backtest for ${processedTickers.length} tickers from ${startYear} to ${endYear}`);
     
+    // Collect historical data used in calculations for consistent Excel export
+    const historicalData: Record<string, Record<string, any>> = {};
+    
     const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache),
-      calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache)
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData),
+      calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData)
     ]);
 
     const results = {
@@ -749,6 +770,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tickerCount: processedTickers.length,
         tickers: processedTickers.slice(0, 10)
       },
+      historicalData, // Include the actual data used in calculations
       debug: {
         equalWeightResult: equalWeightBuyHold.finalValue,
         marketCapResult: marketCapBuyHold.finalValue,
@@ -756,7 +778,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         marketCapRebalancedResult: marketCapRebalanced.finalValue,
         spyBenchmarkResult: spyBenchmark.finalValue,
         requestedTickers: processedTickers,
-        usingExchangeSuffix: true
+        usingExchangeSuffix: true,
+        historicalDataKeys: Object.keys(historicalData).length
       },
       message: processedTickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
