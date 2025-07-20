@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "A comprehensive backtesting application for comparing different investment strategies using S&P 500 historical data",
   "scripts": {
-    "build": "tsc",
-    "dev": "vercel dev",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "test": "echo \"Error: no test specified\" && exit 1",
     "backtest": "node scripts/run-backtest.js",
     "warm-cache": "node scripts/warmCache.js",
@@ -28,11 +30,23 @@
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
     "dotenv": "^16.3.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "next": "^14.0.0",
+    "chart.js": "^4.4.0",
+    "react-chartjs-2": "^5.2.0",
+    "papaparse": "^5.4.1"
   },
   "devDependencies": {
     "@types/node": "^24.0.15",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/papaparse": "^5.3.14",
     "@vercel/node": "^5.3.6",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
     "nodemon": "^3.0.2",
     "typescript": "^5.8.3"
   },
