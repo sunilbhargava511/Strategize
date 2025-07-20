@@ -92,44 +92,275 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
     XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
 
-    // Helper function to generate simulation data
+    // Helper function to simulate stock availability (some stocks become available later)
+    const getAvailableStocks = (year: number, allTickers: string[]) => {
+      // Simulate that some stocks become available in later years
+      const yearIndex = years.indexOf(year);
+      const availabilityThreshold = yearIndex / years.length;
+      return allTickers.filter((_, index) => (index / allTickers.length) <= availabilityThreshold + 0.5);
+    };
+
+    // Helper function to generate simulation data with proper algorithm logic
     const generateSimulationData = (strategy: string, baseGrowth: number, volatility: number) => {
       const simHeader = ['', ...years.map(y => y.toString())];
       const simData = [simHeader];
       
-      // Calculate equal weight allocation per stock
-      const stockAllocation = Math.floor(initialInvestment / (tickers.length || 1));
+      const isEqualWeight = strategy.includes('EQW');
+      const isRebalanced = strategy.includes('B');
+      
+      // Portfolio state tracking
+      let portfolioValue = initialInvestment;
+      let stockHoldings: { [ticker: string]: { shares: number; value: number } } = {};
+      let stockPrices: { [ticker: string]: number[] } = {};
+      let stockMarketCaps: { [ticker: string]: number[] } = {};
+      
+      // Generate price and market cap data for all tickers
+      tickers.slice(0, 30).forEach(ticker => {
+        stockPrices[ticker] = [];
+        stockMarketCaps[ticker] = [];
+        let basePrice = 50 + (ticker.charCodeAt(0) * 3);
+        let baseMarketCap = 15000000000 + (ticker.charCodeAt(0) * 1000000000);
+        
+        years.forEach((year, index) => {
+          const priceGrowth = baseGrowth + (Math.random() - 0.5) * (volatility * 1.5);
+          const marketCapGrowth = baseGrowth + (Math.random() - 0.5) * volatility;
+          
+          if (index === 0) {
+            stockPrices[ticker].push(basePrice);
+            stockMarketCaps[ticker].push(baseMarketCap);
+          } else {
+            basePrice *= (1 + priceGrowth);
+            baseMarketCap *= (1 + marketCapGrowth);
+            stockPrices[ticker].push(basePrice);
+            stockMarketCaps[ticker].push(baseMarketCap);
+          }
+        });
+      });
       
       // Add total portfolio value row
       const totalRow = [`$${initialInvestment.toLocaleString()}`];
-      let currentValue = initialInvestment;
       
-      years.forEach((year, index) => {
-        if (index === 0) {
-          totalRow.push(`$${currentValue.toLocaleString()}`);
+      years.forEach((year, yearIndex) => {
+        const availableStocks = getAvailableStocks(year, tickers.slice(0, 30));
+        
+        if (yearIndex === 0) {
+          // Initial allocation
+          if (isEqualWeight) {
+            const equalAllocation = portfolioValue / availableStocks.length;
+            availableStocks.forEach(ticker => {
+              const shares = equalAllocation / stockPrices[ticker][yearIndex];
+              stockHoldings[ticker] = { shares, value: equalAllocation };
+            });
+          } else {
+            // Market cap weighted
+            const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+            availableStocks.forEach(ticker => {
+              const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
+              const allocation = portfolioValue * weight;
+              const shares = allocation / stockPrices[ticker][yearIndex];
+              stockHoldings[ticker] = { shares, value: allocation };
+            });
+          }
+          totalRow.push(`$${Math.floor(portfolioValue).toLocaleString()}`);
         } else {
-          const yearGrowth = baseGrowth + (Math.random() - 0.5) * volatility;
-          currentValue *= (1 + yearGrowth);
-          totalRow.push(`$${Math.floor(currentValue).toLocaleString()}`);
+          // Update portfolio value based on price changes
+          portfolioValue = 0;
+          Object.keys(stockHoldings).forEach(ticker => {
+            stockHoldings[ticker].value = stockHoldings[ticker].shares * stockPrices[ticker][yearIndex];
+            portfolioValue += stockHoldings[ticker].value;
+          });
+          
+          if (isRebalanced) {
+            // REBALANCED: Full rebalancing including new stocks
+            if (isEqualWeight) {
+              const equalAllocation = portfolioValue / availableStocks.length;
+              // Reset all holdings for equal weight rebalancing
+              stockHoldings = {};
+              availableStocks.forEach(ticker => {
+                const shares = equalAllocation / stockPrices[ticker][yearIndex];
+                stockHoldings[ticker] = { shares, value: equalAllocation };
+              });
+            } else {
+              // Market cap weighted rebalancing
+              const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+              stockHoldings = {};
+              availableStocks.forEach(ticker => {
+                const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
+                const allocation = portfolioValue * weight;
+                const shares = allocation / stockPrices[ticker][yearIndex];
+                stockHoldings[ticker] = { shares, value: allocation };
+              });
+            }
+          } else {
+            // BUY & HOLD: Only add new stocks, keep existing proportions
+            const newStocks = availableStocks.filter(ticker => !stockHoldings[ticker]);
+            
+            if (newStocks.length > 0) {
+              if (isEqualWeight) {
+                // Calculate target equal allocation including new stocks
+                const targetAllocation = portfolioValue / availableStocks.length;
+                const currentAllocations = Object.values(stockHoldings).reduce((sum, holding) => sum + holding.value, 0);
+                const totalNewAllocation = newStocks.length * targetAllocation;
+                
+                // Reduce existing holdings proportionally
+                const reductionFactor = (portfolioValue - totalNewAllocation) / currentAllocations;
+                Object.keys(stockHoldings).forEach(ticker => {
+                  stockHoldings[ticker].shares *= reductionFactor;
+                  stockHoldings[ticker].value *= reductionFactor;
+                });
+                
+                // Add new stocks
+                newStocks.forEach(ticker => {
+                  const shares = targetAllocation / stockPrices[ticker][yearIndex];
+                  stockHoldings[ticker] = { shares, value: targetAllocation };
+                });
+              } else {
+                // Market cap weighted for new stocks
+                const newStocksTotalMarketCap = newStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+                const allStocksTotalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+                const newStocksAllocation = portfolioValue * (newStocksTotalMarketCap / allStocksTotalMarketCap);
+                
+                // Reduce existing holdings proportionally
+                const reductionFactor = (portfolioValue - newStocksAllocation) / portfolioValue;
+                Object.keys(stockHoldings).forEach(ticker => {
+                  stockHoldings[ticker].shares *= reductionFactor;
+                  stockHoldings[ticker].value *= reductionFactor;
+                });
+                
+                // Add new stocks with market cap weights
+                newStocks.forEach(ticker => {
+                  const weight = stockMarketCaps[ticker][yearIndex] / newStocksTotalMarketCap;
+                  const allocation = newStocksAllocation * weight;
+                  const shares = allocation / stockPrices[ticker][yearIndex];
+                  stockHoldings[ticker] = { shares, value: allocation };
+                });
+              }
+            }
+          }
+          
+          // Recalculate total portfolio value
+          portfolioValue = Object.values(stockHoldings).reduce((sum, holding) => sum + holding.value, 0);
+          totalRow.push(`$${Math.floor(portfolioValue).toLocaleString()}`);
         }
       });
+      
       simData.push(totalRow);
       
-      // Add individual stock rows with equal allocation
+      // Add individual stock rows - track holdings over time
+      const stockTimeSeriesData: { [ticker: string]: string[] } = {};
+      
+      // Initialize tracking for each ticker
       tickers.slice(0, 30).forEach(ticker => {
-        const row = [`$${stockAllocation.toLocaleString()}`]; // Equal allocation for each stock
-        let stockValue = stockAllocation;
+        stockTimeSeriesData[ticker] = [ticker];
+      });
+      
+      // Re-run the simulation to track individual stock values over time
+      let portfolioValueTracker = initialInvestment;
+      let stockHoldingsTracker: { [ticker: string]: { shares: number; value: number } } = {};
+      
+      years.forEach((year, yearIndex) => {
+        const availableStocks = getAvailableStocks(year, tickers.slice(0, 30));
         
-        years.forEach((year, index) => {
-          if (index === 0) {
-            row.push(`$${stockValue.toLocaleString()}`);
+        if (yearIndex === 0) {
+          // Initial allocation
+          if (isEqualWeight) {
+            const equalAllocation = portfolioValueTracker / availableStocks.length;
+            availableStocks.forEach(ticker => {
+              const shares = equalAllocation / stockPrices[ticker][yearIndex];
+              stockHoldingsTracker[ticker] = { shares, value: equalAllocation };
+            });
           } else {
-            const stockGrowth = baseGrowth + (Math.random() - 0.5) * (volatility * 1.5); // Individual stocks more volatile
-            stockValue *= (1 + stockGrowth);
-            row.push(`$${Math.floor(stockValue).toLocaleString()}`);
+            // Market cap weighted
+            const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+            availableStocks.forEach(ticker => {
+              const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
+              const allocation = portfolioValueTracker * weight;
+              const shares = allocation / stockPrices[ticker][yearIndex];
+              stockHoldingsTracker[ticker] = { shares, value: allocation };
+            });
+          }
+        } else {
+          // Update values and apply strategy logic (same as above)
+          portfolioValueTracker = 0;
+          Object.keys(stockHoldingsTracker).forEach(ticker => {
+            stockHoldingsTracker[ticker].value = stockHoldingsTracker[ticker].shares * stockPrices[ticker][yearIndex];
+            portfolioValueTracker += stockHoldingsTracker[ticker].value;
+          });
+          
+          // Apply same rebalancing/buy&hold logic as above
+          if (isRebalanced) {
+            if (isEqualWeight) {
+              const equalAllocation = portfolioValueTracker / availableStocks.length;
+              stockHoldingsTracker = {};
+              availableStocks.forEach(ticker => {
+                const shares = equalAllocation / stockPrices[ticker][yearIndex];
+                stockHoldingsTracker[ticker] = { shares, value: equalAllocation };
+              });
+            } else {
+              const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+              stockHoldingsTracker = {};
+              availableStocks.forEach(ticker => {
+                const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
+                const allocation = portfolioValueTracker * weight;
+                const shares = allocation / stockPrices[ticker][yearIndex];
+                stockHoldingsTracker[ticker] = { shares, value: allocation };
+              });
+            }
+          } else {
+            // Buy & hold logic for new stocks (same as above)
+            const newStocks = availableStocks.filter(ticker => !stockHoldingsTracker[ticker]);
+            if (newStocks.length > 0) {
+              if (isEqualWeight) {
+                const targetAllocation = portfolioValueTracker / availableStocks.length;
+                const currentAllocations = Object.values(stockHoldingsTracker).reduce((sum, holding) => sum + holding.value, 0);
+                const totalNewAllocation = newStocks.length * targetAllocation;
+                const reductionFactor = (portfolioValueTracker - totalNewAllocation) / currentAllocations;
+                
+                Object.keys(stockHoldingsTracker).forEach(ticker => {
+                  stockHoldingsTracker[ticker].shares *= reductionFactor;
+                  stockHoldingsTracker[ticker].value *= reductionFactor;
+                });
+                
+                newStocks.forEach(ticker => {
+                  const shares = targetAllocation / stockPrices[ticker][yearIndex];
+                  stockHoldingsTracker[ticker] = { shares, value: targetAllocation };
+                });
+              } else {
+                const newStocksTotalMarketCap = newStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+                const allStocksTotalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
+                const newStocksAllocation = portfolioValueTracker * (newStocksTotalMarketCap / allStocksTotalMarketCap);
+                const reductionFactor = (portfolioValueTracker - newStocksAllocation) / portfolioValueTracker;
+                
+                Object.keys(stockHoldingsTracker).forEach(ticker => {
+                  stockHoldingsTracker[ticker].shares *= reductionFactor;
+                  stockHoldingsTracker[ticker].value *= reductionFactor;
+                });
+                
+                newStocks.forEach(ticker => {
+                  const weight = stockMarketCaps[ticker][yearIndex] / newStocksTotalMarketCap;
+                  const allocation = newStocksAllocation * weight;
+                  const shares = allocation / stockPrices[ticker][yearIndex];
+                  stockHoldingsTracker[ticker] = { shares, value: allocation };
+                });
+              }
+            }
+          }
+        }
+        
+        // Record each stock's value for this year
+        tickers.slice(0, 30).forEach(ticker => {
+          if (stockHoldingsTracker[ticker]) {
+            const value = stockHoldingsTracker[ticker].value;
+            stockTimeSeriesData[ticker].push(`$${Math.floor(value).toLocaleString()}`);
+          } else {
+            stockTimeSeriesData[ticker].push(''); // Stock not available yet
           }
         });
-        simData.push(row);
+      });
+      
+      // Add the time series data to simData
+      tickers.slice(0, 30).forEach(ticker => {
+        simData.push(stockTimeSeriesData[ticker]);
       });
       
       return simData;
