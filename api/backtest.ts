@@ -120,8 +120,8 @@ async function calculateStrategy(
   
   // Calculate returns
   const totalReturn = ((currentValue - initialInvestment) / initialInvestment) * 100;
-  const years = endYear - startYear;
-  const annualizedReturn = years > 0 ? (Math.pow(currentValue / initialInvestment, 1 / years) - 1) * 100 : totalReturn;
+  const yearsDuration = endYear - startYear;
+  const annualizedReturn = yearsDuration > 0 ? (Math.pow(currentValue / initialInvestment, 1 / yearsDuration) - 1) * 100 : totalReturn;
   
   return {
     totalReturn,
