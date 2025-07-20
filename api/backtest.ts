@@ -16,6 +16,8 @@ interface StrategyResult {
   annualizedReturn: number;
   finalValue: number;
   yearlyValues: Record<number, number>;
+  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>>;
+  portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }>;
 }
 
 async function fetchMarketCapData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
@@ -345,10 +347,12 @@ async function calculateRebalancedStrategy(
   strategyType: 'equalWeight' | 'marketCap',
   bypassCache: boolean = false,
   historicalData?: Record<string, Record<string, any>>
-): Promise<number> {
+): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>>; yearlyValues: Record<number, number>; }> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
   let portfolioValue = initialInvestment;
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>> = {};
+  const yearlyValues: Record<number, number> = {};
   
   // Simulate year by year
   for (let year = startYear; year <= endYear; year++) {
@@ -407,15 +411,25 @@ async function calculateRebalancedStrategy(
       }
     }
     
-    // Calculate portfolio performance for this year
+    // Calculate portfolio performance for this year and track holdings
     let yearEndValue = 0;
+    yearlyHoldings[year] = {};
     
     for (const ticker of availableStocks) {
       const allocation = allocations[ticker];
       const investment = portfolioValue * allocation;
+      const shares = investment / stockPrices[ticker].start;
       const stockReturn = (stockPrices[ticker].end - stockPrices[ticker].start) / stockPrices[ticker].start;
       const stockEndValue = investment * (1 + stockReturn);
       yearEndValue += stockEndValue;
+      
+      // Store holdings data
+      yearlyHoldings[year][ticker] = {
+        weight: allocation,
+        shares: shares,
+        value: stockEndValue,
+        price: stockPrices[ticker].start
+      };
       
       if (year === startYear || availableStocks.length > 1) {
         console.log(`${year} ${ticker}: ${(allocation * 100).toFixed(1)}% allocation, ${(stockReturn * 100).toFixed(1)}% return`);
@@ -423,10 +437,11 @@ async function calculateRebalancedStrategy(
     }
     
     portfolioValue = yearEndValue;
+    yearlyValues[year] = portfolioValue;
     console.log(`${year} portfolio value: $${Math.floor(portfolioValue).toLocaleString()}`);
   }
   
-  return portfolioValue;
+  return { finalValue: portfolioValue, yearlyHoldings, yearlyValues };
 }
 
 async function calculateStrategy(
@@ -440,6 +455,8 @@ async function calculateStrategy(
   historicalData?: Record<string, Record<string, any>>
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>> = {};
+  const portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }> = {};
   let currentValue = initialInvestment;
   
   // Get start of year dates
@@ -533,16 +550,21 @@ async function calculateStrategy(
       totalReturn: 0,
       annualizedReturn: 0,
       finalValue: initialInvestment,
-      yearlyValues
+      yearlyValues,
+      yearlyHoldings: {},
+      portfolioComposition: {}
     };
   }
   
   if (rebalance) {
     // REBALANCED STRATEGY: Year-by-year simulation with dynamic stock addition
     console.log(`Starting ${strategyType} rebalanced strategy simulation`);
-    currentValue = await calculateRebalancedStrategy(
+    const rebalancedResult = await calculateRebalancedStrategy(
       tickers, startYear, endYear, initialInvestment, strategyType, bypassCache, historicalData
     );
+    currentValue = rebalancedResult.finalValue;
+    Object.assign(yearlyHoldings, rebalancedResult.yearlyHoldings);
+    Object.assign(yearlyValues, rebalancedResult.yearlyValues);
   } else {
     // BUY & HOLD STRATEGY: Simple start-to-end calculation
     console.log(`Starting ${strategyType} buy & hold strategy calculation`);
@@ -551,12 +573,46 @@ async function calculateStrategy(
       const perStockInvestment = initialInvestment / validTickers.length;
       let totalEndValue = 0;
       
+      // Set up equal weight holdings for all years
+      for (let year = startYear; year <= endYear; year++) {
+        yearlyHoldings[year] = {};
+        yearlyValues[year] = year === startYear ? initialInvestment : 0;
+      }
+      
       for (const ticker of validTickers) {
         const startPrice = initialPrices[ticker];
         const endPrice = finalPrices[ticker];
         const stockReturn = (endPrice - startPrice) / startPrice;
         const stockEndValue = perStockInvestment * (1 + stockReturn);
+        const shares = perStockInvestment / startPrice;
+        const weight = 1 / validTickers.length;
         totalEndValue += stockEndValue;
+        
+        // Track portfolio composition
+        portfolioComposition[ticker] = {
+          initialWeight: weight,
+          finalWeight: weight, // Equal weight maintains same weight
+          available: true
+        };
+        
+        // Add holdings for each year (buy & hold maintains same shares)
+        for (let year = startYear; year <= endYear; year++) {
+          const yearDate = `${year}-01-02`;
+          const yearPrice = year === startYear ? startPrice : 
+                           year === endYear ? endPrice : 
+                           startPrice * (1 + (stockReturn * (year - startYear) / (endYear - startYear)));
+          
+          yearlyHoldings[year][ticker] = {
+            weight: weight,
+            shares: shares,
+            value: shares * yearPrice,
+            price: yearPrice
+          };
+          
+          if (year > startYear) {
+            yearlyValues[year] += shares * yearPrice;
+          }
+        }
       }
       
       currentValue = totalEndValue;
@@ -568,6 +624,12 @@ async function calculateStrategy(
         totalMarketCap += initialMarketCaps[ticker];
       }
       
+      // Set up market cap weighted holdings for all years
+      for (let year = startYear; year <= endYear; year++) {
+        yearlyHoldings[year] = {};
+        yearlyValues[year] = year === startYear ? initialInvestment : 0;
+      }
+      
       let totalEndValue = 0;
       
       for (const ticker of validTickers) {
@@ -577,7 +639,34 @@ async function calculateStrategy(
         const endPrice = finalPrices[ticker];
         const stockReturn = (endPrice - startPrice) / startPrice;
         const stockEndValue = stockInvestment * (1 + stockReturn);
+        const shares = stockInvestment / startPrice;
         totalEndValue += stockEndValue;
+        
+        // Track portfolio composition
+        portfolioComposition[ticker] = {
+          initialWeight: weight,
+          finalWeight: weight, // Market cap weight maintains same weight for buy & hold
+          available: true
+        };
+        
+        // Add holdings for each year (buy & hold maintains same shares)
+        for (let year = startYear; year <= endYear; year++) {
+          const yearDate = `${year}-01-02`;
+          const yearPrice = year === startYear ? startPrice : 
+                           year === endYear ? endPrice : 
+                           startPrice * (1 + (stockReturn * (year - startYear) / (endYear - startYear)));
+          
+          yearlyHoldings[year][ticker] = {
+            weight: weight,
+            shares: shares,
+            value: shares * yearPrice,
+            price: yearPrice
+          };
+          
+          if (year > startYear) {
+            yearlyValues[year] += shares * yearPrice;
+          }
+        }
         
         console.log(`${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B, weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
       }
@@ -595,7 +684,9 @@ async function calculateStrategy(
     totalReturn,
     annualizedReturn,
     finalValue: currentValue,
-    yearlyValues
+    yearlyValues,
+    yearlyHoldings,
+    portfolioComposition
   };
 }
 
@@ -706,25 +797,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           totalReturn: ((Math.pow(1 + baseReturn/100, yearRange) - 1) * 100),
           annualizedReturn: baseReturn,
           finalValue: initialInvestment * Math.pow(1 + baseReturn/100, yearRange),
-          yearlyValues: {}
+          yearlyValues: {},
+          yearlyHoldings: {},
+          portfolioComposition: {}
         },
         marketCapBuyHold: {
           totalReturn: ((Math.pow(1 + (baseReturn + 2)/100, yearRange) - 1) * 100),
           annualizedReturn: baseReturn + 2,
           finalValue: initialInvestment * Math.pow(1 + (baseReturn + 2)/100, yearRange),
-          yearlyValues: {}
+          yearlyValues: {},
+          yearlyHoldings: {},
+          portfolioComposition: {}
         },
         equalWeightRebalanced: {
           totalReturn: ((Math.pow(1 + (baseReturn + 3)/100, yearRange) - 1) * 100),
           annualizedReturn: baseReturn + 3,
           finalValue: initialInvestment * Math.pow(1 + (baseReturn + 3)/100, yearRange),
-          yearlyValues: {}
+          yearlyValues: {},
+          yearlyHoldings: {},
+          portfolioComposition: {}
         },
         marketCapRebalanced: {
           totalReturn: ((Math.pow(1 + (baseReturn + 1.5)/100, yearRange) - 1) * 100),
           annualizedReturn: baseReturn + 1.5,
           finalValue: initialInvestment * Math.pow(1 + (baseReturn + 1.5)/100, yearRange),
-          yearlyValues: {}
+          yearlyValues: {},
+          yearlyHoldings: {},
+          portfolioComposition: {}
         },
         parameters: { 
           startYear, 

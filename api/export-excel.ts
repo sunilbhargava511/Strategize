@@ -83,14 +83,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
 
-    // Tab 3: Portfolio - Ticker list
+    // Tab 3: Portfolio Holdings - Detailed breakdown by strategy
     const portfolioData = [
+      ['Portfolio Holdings Analysis'],
+      [],
       ['Portfolio Composition'],
-      ['Ticker Symbol'],
-      ...tickers.map((ticker: string) => [ticker])
+      ['Total Stocks', tickers.length],
+      ['Investment Period', `${startYear} - ${endYear}`],
+      ['Initial Investment', `$${initialInvestment.toLocaleString()}`],
+      [],
+      ['Stock Tickers'],
+      ...tickers.map((ticker: string) => [ticker]),
+      [],
+      ['Holdings by Strategy (Year ' + startYear + ')']
     ];
+
+    // Add holdings data for each strategy
+    const strategiesWithData = [
+      { key: 'equalWeightBuyHold', name: 'Equal Weight Buy & Hold' },
+      { key: 'marketCapBuyHold', name: 'Market Cap Buy & Hold' },
+      { key: 'equalWeightRebalanced', name: 'Equal Weight Rebalanced' },
+      { key: 'marketCapRebalanced', name: 'Market Cap Rebalanced' },
+      { key: 'spyBenchmark', name: 'SPY Benchmark' }
+    ];
+
+    strategiesWithData.forEach(strategy => {
+      const strategyData = results[strategy.key];
+      if (strategyData?.yearlyHoldings && strategyData.yearlyHoldings[startYear]) {
+        portfolioData.push([]);
+        portfolioData.push([strategy.name]);
+        portfolioData.push(['Ticker', 'Weight %', 'Shares', 'Value']);
+        
+        const holdings = strategyData.yearlyHoldings[startYear];
+        Object.entries(holdings).forEach(([ticker, holding]: [string, any]) => {
+          portfolioData.push([
+            ticker,
+            `${(holding.weight * 100).toFixed(2)}%`,
+            Math.round(holding.shares),
+            `$${Math.round(holding.value).toLocaleString()}`
+          ]);
+        });
+      }
+    });
+
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
-    XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
+    XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Holdings');
 
     // Helper function to create detailed strategy sheets
     const createStrategySheet = (strategyKey: string, strategyName: string) => {
@@ -102,7 +139,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const gain = data.finalValue - initialInvestment;
       const duration = endYear - startYear;
 
-      return [
+      const sheetData = [
         [strategyName],
         [],
         ['Key Metrics'],
@@ -120,11 +157,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ['Performance Analysis'],
         ['Investment Growth', `${((data.finalValue / initialInvestment) * 100).toFixed(1)}% of original value`],
         ['Average Annual Growth', `${data.annualizedReturn.toFixed(2)}% per year`],
-        [],
-        ['Note'],
-        ['All calculations based on real market data from EODHD API'],
-        ['Data includes stock splits and dividend adjustments']
+        []
       ];
+
+      // Add yearly holdings data if available
+      if (data.yearlyHoldings && Object.keys(data.yearlyHoldings).length > 0) {
+        sheetData.push(['Yearly Holdings Breakdown']);
+        sheetData.push([]);
+        
+        // Get all years with data
+        const years = Object.keys(data.yearlyHoldings).map(Number).sort();
+        
+        if (years.length > 0) {
+          // Add header row with years
+          sheetData.push(['Ticker', ...years.map(year => `${year} Weight`), ...years.map(year => `${year} Shares`), ...years.map(year => `${year} Value`)]);
+          
+          // Get all tickers from any year
+          const allTickers = new Set<string>();
+          years.forEach(year => {
+            Object.keys(data.yearlyHoldings[year] || {}).forEach(ticker => allTickers.add(ticker));
+          });
+          
+          // Add data rows for each ticker
+          Array.from(allTickers).sort().forEach(ticker => {
+            const row = [ticker];
+            
+            // Add weights
+            years.forEach(year => {
+              const holding = data.yearlyHoldings[year]?.[ticker];
+              row.push(holding ? `${(holding.weight * 100).toFixed(2)}%` : 'N/A');
+            });
+            
+            // Add shares
+            years.forEach(year => {
+              const holding = data.yearlyHoldings[year]?.[ticker];
+              row.push(holding ? Math.round(holding.shares).toLocaleString() : 'N/A');
+            });
+            
+            // Add values
+            years.forEach(year => {
+              const holding = data.yearlyHoldings[year]?.[ticker];
+              row.push(holding ? `$${Math.round(holding.value).toLocaleString()}` : 'N/A');
+            });
+            
+            sheetData.push(row);
+          });
+        }
+        
+        sheetData.push([]);
+      }
+
+      sheetData.push(['Note']);
+      sheetData.push(['All calculations based on real market data from EODHD API']);
+      sheetData.push(['Data includes stock splits and dividend adjustments']);
+
+      return sheetData;
     };
 
     // Individual Strategy Detail Sheets

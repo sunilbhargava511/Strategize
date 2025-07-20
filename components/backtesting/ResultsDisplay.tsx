@@ -67,12 +67,108 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
 
   const tabs = [
     { id: 'overview', name: 'Overview', icon: '📊' },
+    { id: 'holdings', name: 'Holdings', icon: '📋' },
     { id: 'equalWeightBuyHold', name: 'Equal Weight B&H', icon: '⚖️' },
     { id: 'marketCapBuyHold', name: 'Market Cap B&H', icon: '📈' },
     { id: 'equalWeightRebalanced', name: 'Equal Weight Rebal.', icon: '🔄' },
     { id: 'marketCapRebalanced', name: 'Market Cap Rebal.', icon: '📊' },
     { id: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
   ]
+
+  const renderHoldingsView = () => {
+    if (!results.parameters) return <div>No portfolio data available</div>
+
+    const startYear = results.parameters.startYear
+    const endYear = results.parameters.endYear
+    const tickers = results.parameters.tickers || []
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center space-x-3">
+          <span className="text-3xl">📋</span>
+          <h3 className="text-2xl font-semibold text-primary-900">Portfolio Holdings</h3>
+        </div>
+
+        {/* Portfolio Composition Summary */}
+        <div className="bg-blue-50 rounded-lg p-6">
+          <h4 className="font-semibold text-blue-900 mb-4">Portfolio Composition</h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+              <span className="text-blue-700">Total Stocks:</span>
+              <span className="ml-2 font-medium">{tickers.length}</span>
+            </div>
+            <div>
+              <span className="text-blue-700">Investment Period:</span>
+              <span className="ml-2 font-medium">{startYear} - {endYear}</span>
+            </div>
+            <div>
+              <span className="text-blue-700">Initial Investment:</span>
+              <span className="ml-2 font-medium">{formatCurrency(results.parameters.initialInvestment || 1000000)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Stock List */}
+        <div className="bg-gray-50 rounded-lg p-6">
+          <h4 className="font-semibold text-gray-900 mb-4">Stock Tickers</h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {tickers.map((ticker: string) => (
+              <div key={ticker} className="bg-white px-3 py-2 rounded border text-center font-mono font-medium">
+                {ticker}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Strategy Holdings Comparison */}
+        <div className="space-y-4">
+          <h4 className="font-semibold text-gray-900">Holdings by Strategy</h4>
+          {strategies.map(strategy => {
+            const data = results[strategy.key]
+            if (!data?.yearlyHoldings) return null
+
+            const firstYear = Math.min(...Object.keys(data.yearlyHoldings).map(Number))
+            const firstYearHoldings = data.yearlyHoldings[firstYear]
+            
+            return (
+              <div key={strategy.key} className="border rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-3">
+                  <span className="text-lg">{strategy.icon}</span>
+                  <h5 className="font-medium">{strategy.name}</h5>
+                </div>
+                {firstYearHoldings && Object.keys(firstYearHoldings).length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b">
+                          <th className="text-left p-2">Ticker</th>
+                          <th className="text-right p-2">Weight</th>
+                          <th className="text-right p-2">Shares</th>
+                          <th className="text-right p-2">Value</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(firstYearHoldings).map(([ticker, holding]: [string, any]) => (
+                          <tr key={ticker} className="border-b">
+                            <td className="p-2 font-mono font-medium">{ticker}</td>
+                            <td className="p-2 text-right">{(holding.weight * 100).toFixed(1)}%</td>
+                            <td className="p-2 text-right">{holding.shares.toFixed(0)}</td>
+                            <td className="p-2 text-right">{formatCurrency(holding.value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-sm">No holdings data available</p>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
 
   const renderStrategyDetail = (strategyKey: string, strategyName: string, icon: string) => {
     const data = results[strategyKey]
@@ -289,6 +385,9 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
             </div>
           )}
         </div>
+      ) : activeTab === 'holdings' ? (
+        // Holdings View
+        renderHoldingsView()
       ) : (
         // Individual Strategy Detail Views
         <div>
