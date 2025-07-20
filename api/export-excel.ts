@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const tickers = parameters?.tickers || [];
     
     // Generate year range
-    const years = [];
+    const years: number[] = [];
     for (let year = startYear; year <= endYear; year++) {
       years.push(year);
     }
