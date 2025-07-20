@@ -92,25 +92,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
-    // Tab 4: Strategy Details - Simplified view showing just the key results
-    const strategiesData = [
-      ['Strategy Comparison Details'],
-      [],
-      ['Strategy Name', 'Initial Investment', 'Final Value', 'Total Return (%)', 'Annualized Return (%)'],
-      ['Market Cap Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}`, (results.marketCapBuyHold?.totalReturn || 0).toFixed(2), (results.marketCapBuyHold?.annualizedReturn || 0).toFixed(2)],
-      ['Market Cap Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}`, (results.marketCapRebalanced?.totalReturn || 0).toFixed(2), (results.marketCapRebalanced?.annualizedReturn || 0).toFixed(2)],
-      ['SPY Benchmark', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}`, (results.spyBenchmark?.totalReturn || 0).toFixed(2), (results.spyBenchmark?.annualizedReturn || 0).toFixed(2)],
-      ['Equal Weight Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}`, (results.equalWeightBuyHold?.totalReturn || 0).toFixed(2), (results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(2)],
-      ['Equal Weight Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}`, (results.equalWeightRebalanced?.totalReturn || 0).toFixed(2), (results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(2)],
-      [],
-      ['Analysis Period', `${startYear} - ${endYear}`],
-      ['Duration (Years)', endYear - startYear],
-      ['Portfolio Tickers', tickers.join(', ')],
-      [],
-      ['Note: All values calculated using real market data from EODHD API']
-    ];
-    const strategiesSheet = XLSX.utils.aoa_to_sheet(strategiesData);
-    XLSX.utils.book_append_sheet(wb, strategiesSheet, 'Strategy Details');
+    // Helper function to create detailed strategy sheets
+    const createStrategySheet = (strategyKey: string, strategyName: string) => {
+      const data = results[strategyKey];
+      if (!data) {
+        return [['No data available for this strategy']];
+      }
+
+      const gain = data.finalValue - initialInvestment;
+      const duration = endYear - startYear;
+
+      return [
+        [strategyName],
+        [],
+        ['Key Metrics'],
+        ['Total Return', `${data.totalReturn.toFixed(2)}%`],
+        ['Annualized Return', `${data.annualizedReturn.toFixed(2)}%`],
+        ['Final Value', `$${Math.floor(data.finalValue).toLocaleString()}`],
+        [],
+        ['Investment Details'],
+        ['Initial Investment', `$${initialInvestment.toLocaleString()}`],
+        ['Investment Period', `${startYear} - ${endYear}`],
+        ['Duration', `${duration} years`],
+        ['Total Gain/Loss', `$${Math.floor(gain).toLocaleString()}`],
+        ['Portfolio Tickers', tickers.join(', ')],
+        [],
+        ['Performance Analysis'],
+        ['Investment Growth', `${((data.finalValue / initialInvestment) * 100).toFixed(1)}% of original value`],
+        ['Average Annual Growth', `${data.annualizedReturn.toFixed(2)}% per year`],
+        [],
+        ['Note'],
+        ['All calculations based on real market data from EODHD API'],
+        ['Data includes stock splits and dividend adjustments']
+      ];
+    };
+
+    // Individual Strategy Detail Sheets
+    const eqwBuyHoldData = createStrategySheet('equalWeightBuyHold', 'Equal Weight Buy & Hold Strategy');
+    const eqwBuyHoldSheet = XLSX.utils.aoa_to_sheet(eqwBuyHoldData);
+    XLSX.utils.book_append_sheet(wb, eqwBuyHoldSheet, 'EQW Buy & Hold');
+
+    const mcBuyHoldData = createStrategySheet('marketCapBuyHold', 'Market Cap Buy & Hold Strategy');
+    const mcBuyHoldSheet = XLSX.utils.aoa_to_sheet(mcBuyHoldData);
+    XLSX.utils.book_append_sheet(wb, mcBuyHoldSheet, 'MC Buy & Hold');
+
+    const eqwRebalData = createStrategySheet('equalWeightRebalanced', 'Equal Weight Rebalanced Strategy');
+    const eqwRebalSheet = XLSX.utils.aoa_to_sheet(eqwRebalData);
+    XLSX.utils.book_append_sheet(wb, eqwRebalSheet, 'EQW Rebalanced');
+
+    const mcRebalData = createStrategySheet('marketCapRebalanced', 'Market Cap Rebalanced Strategy');
+    const mcRebalSheet = XLSX.utils.aoa_to_sheet(mcRebalData);
+    XLSX.utils.book_append_sheet(wb, mcRebalSheet, 'MC Rebalanced');
+
+    const spyData = createStrategySheet('spyBenchmark', 'SPY Benchmark');
+    const spySheet = XLSX.utils.aoa_to_sheet(spyData);
+    XLSX.utils.book_append_sheet(wb, spySheet, 'SPY Benchmark');
 
     // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });

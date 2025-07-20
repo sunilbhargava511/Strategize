@@ -1,8 +1,12 @@
+import { useState } from 'react'
+
 interface ResultsDisplayProps {
   results: any
 }
 
 export default function ResultsDisplay({ results }: ResultsDisplayProps) {
+  const [activeTab, setActiveTab] = useState('overview')
+  
   if (!results) return null
 
   const formatPercentage = (value: number) => {
@@ -61,6 +65,76 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
     { key: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
   ]
 
+  const tabs = [
+    { id: 'overview', name: 'Overview', icon: '📊' },
+    { id: 'equalWeightBuyHold', name: 'Equal Weight B&H', icon: '⚖️' },
+    { id: 'marketCapBuyHold', name: 'Market Cap B&H', icon: '📈' },
+    { id: 'equalWeightRebalanced', name: 'Equal Weight Rebal.', icon: '🔄' },
+    { id: 'marketCapRebalanced', name: 'Market Cap Rebal.', icon: '📊' },
+    { id: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
+  ]
+
+  const renderStrategyDetail = (strategyKey: string, strategyName: string, icon: string) => {
+    const data = results[strategyKey]
+    if (!data) return <div>No data available for this strategy</div>
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center space-x-3">
+          <span className="text-3xl">{icon}</span>
+          <h3 className="text-2xl font-semibold text-primary-900">{strategyName}</h3>
+        </div>
+        
+        {/* Key Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-sm text-gray-600">Total Return</div>
+            <div className={`text-2xl font-bold ${data.totalReturn > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage(data.totalReturn)}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-sm text-gray-600">Annualized Return</div>
+            <div className={`text-2xl font-bold ${data.annualizedReturn > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatPercentage(data.annualizedReturn)}
+            </div>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-sm text-gray-600">Final Value</div>
+            <div className="text-2xl font-bold text-gray-900">
+              {formatCurrency(data.finalValue)}
+            </div>
+          </div>
+        </div>
+
+        {/* Strategy Details */}
+        <div className="bg-blue-50 rounded-lg p-6">
+          <h4 className="font-semibold text-blue-900 mb-4">Strategy Details</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-blue-700">Initial Investment:</span>
+              <span className="ml-2 font-medium">{formatCurrency(results.parameters?.initialInvestment || 1000000)}</span>
+            </div>
+            <div>
+              <span className="text-blue-700">Investment Period:</span>
+              <span className="ml-2 font-medium">{results.parameters?.startYear} - {results.parameters?.endYear}</span>
+            </div>
+            <div>
+              <span className="text-blue-700">Total Gain/Loss:</span>
+              <span className={`ml-2 font-medium ${(data.finalValue - (results.parameters?.initialInvestment || 1000000)) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {formatCurrency(data.finalValue - (results.parameters?.initialInvestment || 1000000))}
+              </span>
+            </div>
+            <div>
+              <span className="text-blue-700">Duration:</span>
+              <span className="ml-2 font-medium">{(results.parameters?.endYear || 2024) - (results.parameters?.startYear || 2010)} years</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       <div className="flex items-center space-x-2 mb-6">
@@ -70,7 +144,30 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         </h2>
       </div>
 
-      {/* Strategy Comparison Table */}
+      {/* Tab Navigation */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8 overflow-x-auto">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex items-center space-x-2 ${
+                activeTab === tab.id
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span>{tab.name}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'overview' ? (
+        <div className="space-y-6">
+          {/* Strategy Comparison Table */}
       <div className="overflow-x-auto mb-6">
         <table className="w-full border-collapse">
           <thead>
@@ -182,13 +279,24 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         </div>
       )}
 
-      {/* Notice for Mock Data */}
-      {results.message && (
-        <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <div className="flex items-center space-x-2 text-yellow-800">
-            <span>⚠️</span>
-            <span className="text-sm">{results.message}</span>
-          </div>
+          {/* Notice for Mock Data */}
+          {results.message && (
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center space-x-2 text-yellow-800">
+                <span>⚠️</span>
+                <span className="text-sm">{results.message}</span>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        // Individual Strategy Detail Views
+        <div>
+          {activeTab === 'equalWeightBuyHold' && renderStrategyDetail('equalWeightBuyHold', 'Equal Weight Buy & Hold', '⚖️')}
+          {activeTab === 'marketCapBuyHold' && renderStrategyDetail('marketCapBuyHold', 'Market Cap Buy & Hold', '📈')}
+          {activeTab === 'equalWeightRebalanced' && renderStrategyDetail('equalWeightRebalanced', 'Equal Weight Rebalanced', '🔄')}
+          {activeTab === 'marketCapRebalanced' && renderStrategyDetail('marketCapRebalanced', 'Market Cap Rebalanced', '📊')}
+          {activeTab === 'spyBenchmark' && renderStrategyDetail('spyBenchmark', 'SPY Benchmark', '🏛️')}
         </div>
       )}
     </div>
