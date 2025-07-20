@@ -160,7 +160,7 @@ export default function CacheManager() {
             <span className="text-2xl">📥</span>
             <div className="text-left">
               <div className="font-medium">
-                {isExporting ? 'Exporting...' : 'Export Test Data'}
+                {isExporting ? 'Exporting...' : 'Export Cache'}
               </div>
               <div className="text-sm text-gray-600">
                 Download as Excel with Price, Market Cap & Shares tabs

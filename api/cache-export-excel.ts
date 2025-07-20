@@ -122,51 +122,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const years = Object.keys(dataByYear).map(y => parseInt(y)).sort();
     const yearStrings = years.map(y => y.toString());
 
-    // Calculate portfolio performance metrics for Dashboard
-    const calculatePortfolioMetrics = () => {
-      const strategies = [
-        { name: 'MC B', description: 'Market Cap Buy & Hold' },
-        { name: 'MC', description: 'Market Cap' },
-        { name: 'SPY', description: 'SPY' },
-        { name: 'EQW', description: 'Equal Weight' },
-        { name: 'EQW B', description: 'Equal Weight Buy & Hold' },
-        { name: 'RSP', description: 'RSP' }
-      ];
-
-      return strategies.map(strategy => ({
-        strategy: strategy.name,
-        startValue: 1000000,
-        endValue: Math.floor(1000000 * (1 + Math.random() * 1.5 + 0.5)), // Random for demo
-        annualizedReturn: (9 + Math.random() * 6).toFixed(1) + '%'
-      }));
-    };
-
-    // Create Dashboard tab (matching your format)
-    const portfolioMetrics = calculatePortfolioMetrics();
-    const dashboardData = [
-      ['Strategies', '2017', '2025', 'Annualized'],
-      ...portfolioMetrics.map(metric => [
-        metric.strategy,
-        `$${metric.startValue.toLocaleString()}.00`,
-        `$${metric.endValue.toLocaleString()}.00`,
-        metric.annualizedReturn
-      ])
+    // Create Summary tab with metadata about the export
+    const summaryData = [
+      ['Cache Export Summary'],
+      [''],
+      ['Export Date:', new Date().toLocaleString()],
+      ['Total Tickers:', sortedTickers.length.toString()],
+      ['Total Cache Entries:', marketCapKeys.length.toString()],
+      ['Year Range:', years.length > 0 ? `${Math.min(...years)} - ${Math.max(...years)}` : 'N/A'],
+      [''],
+      ['Note:', 'This export contains only cached market data from EODHD API calls.'],
+      ['', 'Empty cells indicate no data was cached for that ticker/year combination.']
     ];
-    const dashboardSheet = XLSX.utils.aoa_to_sheet(dashboardData);
-    XLSX.utils.book_append_sheet(wb, dashboardSheet, 'Dashboard');
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
 
-    // Create Portfolio tab (ticker list with start/end years)
-    const portfolioData = [['A', 'Start Year', '2017', '2025']];
-    sortedTickers.forEach(ticker => {
-      const info = tickerInfo[ticker];
-      portfolioData.push([ticker, '', info?.startYear?.toString() || '', info?.endYear?.toString() || '']);
-    });
-    const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
-    XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
-
-    // Create Share Prices tab (matching your year-column format)
-    const sharePricesHeader = ['Year', ...yearStrings];
-    const sharePricesData = [sharePricesHeader];
+    // Create Prices tab (split-adjusted prices)
+    const pricesHeader = ['Ticker', ...yearStrings];
+    const pricesData = [pricesHeader];
     
     sortedTickers.forEach(ticker => {
       const row = [ticker];
@@ -174,32 +147,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const price = dataByYear[year]?.[ticker]?.price;
         row.push(price ? `$${price.toFixed(2)}` : '');
       });
-      sharePricesData.push(row);
+      pricesData.push(row);
     });
-    const sharePricesSheet = XLSX.utils.aoa_to_sheet(sharePricesData);
-    XLSX.utils.book_append_sheet(wb, sharePricesSheet, 'Share Prices');
+    const pricesSheet = XLSX.utils.aoa_to_sheet(pricesData);
+    XLSX.utils.book_append_sheet(wb, pricesSheet, 'Prices');
 
-    // Create Market capt data tab (matching your format)
-    const marketCapHeader = ['Year', ...yearStrings];
+    // Create Market Cap tab
+    const marketCapHeader = ['Ticker', ...yearStrings];
     const marketCapData = [marketCapHeader];
     
     sortedTickers.forEach(ticker => {
       const row = [ticker];
       yearStrings.forEach(year => {
         const marketCap = dataByYear[year]?.[ticker]?.marketCap;
-        row.push(marketCap ? `$${marketCap.toLocaleString()}.00` : '');
+        row.push(marketCap ? `$${Math.round(marketCap).toLocaleString()}` : '');
       });
       marketCapData.push(row);
     });
     const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
-    XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market capt data');
+    XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
+    
+    // Create Shares Outstanding tab
+    const sharesHeader = ['Ticker', ...yearStrings];
+    const sharesData = [sharesHeader];
+    
+    sortedTickers.forEach(ticker => {
+      const row = [ticker];
+      yearStrings.forEach(year => {
+        const shares = dataByYear[year]?.[ticker]?.sharesOutstanding;
+        row.push(shares ? shares.toLocaleString() : '');
+      });
+      sharesData.push(row);
+    });
+    const sharesSheet = XLSX.utils.aoa_to_sheet(sharesData);
+    XLSX.utils.book_append_sheet(wb, sharesSheet, 'Shares Outstanding');
 
     // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
     // Set headers for file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="S&P Model Portfolio Simulation-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="Cache-Export-${new Date().toISOString().split('T')[0]}.xlsx"`);
     
     return res.status(200).send(excelBuffer);
   } catch (error: any) {
