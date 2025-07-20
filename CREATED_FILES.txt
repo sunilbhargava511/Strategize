@@ -2,7 +2,6 @@ Files created by setup script:
 ==============================
 
 Directories:
-- src/lib/cache/
 - src/scripts/
 - src/app/api/cache/export/
 - src/app/api/cache/import/
@@ -10,13 +9,8 @@ Directories:
 - temp/
 
 Placeholder Files (need artifact content):
-- src/lib/cache/historicalDataCache.ts
-- src/lib/cache/enhancedCacheManager.ts
 - src/app/api/cache/export/route.ts
 - src/app/api/cache/import/route.ts
-- src/scripts/warmCache.ts
-- src/scripts/cacheStats.ts
-- src/scripts/verifyCacheSetup.ts
 - src/scripts/testEqualWeightBugFix.ts
 - src/components/backtesting/CacheControl.tsx
 

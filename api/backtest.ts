@@ -54,62 +54,30 @@ async function fetchMarketCapData(ticker: string, date: string, bypassCache: boo
     
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
     
-    // Fetch price data
-    const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
-    const priceResponse = await fetch(priceUrl);
+    // Fetch price data with fallback logic for holidays/weekends
+    const priceData = await getSplitAdjustedPriceWithFallback(tickerWithExchange, date, EOD_API_KEY);
     
-    if (!priceResponse.ok) {
-      console.error(`EODHD price API failed for ${tickerWithExchange} on ${date}`);
-      return fetchStockData(ticker, date, bypassCache);
-    }
-    
-    const priceData = await priceResponse.json();
-    if (!priceData || !Array.isArray(priceData) || priceData.length === 0) {
-      console.log(`No price data for ${tickerWithExchange} on ${date}`);
+    if (!priceData) {
+      console.log(`No price data for ${tickerWithExchange} around ${date}`);
       return null;
     }
     
-    const dayData = priceData[0];
+    // Get shares outstanding from fundamentals API
+    let sharesOutstanding = await getSharesOutstanding(tickerWithExchange, date, EOD_API_KEY);
     
-    // Fetch fundamentals data for market cap
-    let marketCap = 0;
-    let sharesOutstanding = 0;
-    
-    try {
-      const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
-      const fundamentalsResponse = await fetch(fundamentalsUrl);
-      
-      if (fundamentalsResponse.ok) {
-        const fundamentalsData = await fundamentalsResponse.json();
-        
-        if (fundamentalsData?.Highlights?.SharesOutstanding) {
-          sharesOutstanding = fundamentalsData.Highlights.SharesOutstanding;
-          marketCap = dayData.adjusted_close * sharesOutstanding;
-        } else if (fundamentalsData?.Highlights?.MarketCapitalization) {
-          marketCap = fundamentalsData.Highlights.MarketCapitalization;
-          sharesOutstanding = marketCap / dayData.adjusted_close;
-        }
-        
-        if (fundamentalsData?.SharesStats?.SharesOutstanding) {
-          sharesOutstanding = fundamentalsData.SharesStats.SharesOutstanding;
-          marketCap = dayData.adjusted_close * sharesOutstanding;
-        }
-      }
-    } catch (fundError) {
-      console.error('Error fetching fundamentals for market cap:', fundError);
+    if (!sharesOutstanding) {
+      console.error(`❌ ERROR: Could not fetch shares outstanding for ${ticker} from EODHD fundamentals API`);
+      return null;
     }
     
-    // Fallback market cap estimation
-    if (marketCap === 0 && dayData.volume > 0) {
-      sharesOutstanding = dayData.volume * 50; // Rough estimate
-      marketCap = dayData.adjusted_close * sharesOutstanding;
-    }
+    // Calculate market cap using real shares outstanding
+    const marketCap = priceData.adjusted_close * sharesOutstanding;
     
     const result = {
       ticker: ticker,
-      date: dayData.date,
-      price: dayData.adjusted_close || dayData.close,
-      adjusted_close: dayData.adjusted_close || dayData.close,
+      date: priceData.date,
+      price: priceData.adjusted_close,
+      adjusted_close: priceData.adjusted_close,
       market_cap: marketCap,
       shares_outstanding: sharesOutstanding
     };
@@ -118,31 +86,363 @@ async function fetchMarketCapData(ticker: string, date: string, bypassCache: boo
     if (!bypassCache) {
       await cache.set(cacheKey, {
         ...result,
-        open: dayData.open,
-        high: dayData.high,
-        low: dayData.low,
-        volume: dayData.volume,
+        open: priceData.open,
+        high: priceData.high,
+        low: priceData.low,
+        volume: priceData.volume,
         market_cap_billions: marketCap / 1000000000,
-        formatted_market_cap: marketCap > 0 ? 
-          new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(marketCap) : 'N/A'
+        formatted_market_cap: new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(marketCap)
       });
     }
     
-    console.log(`Fetched and cached market cap for ${ticker} on ${date}:`, {
+    console.log(`✅ Fetched real market cap for ${ticker} on ${priceData.date}:`, {
       price: result.adjusted_close,
-      market_cap: marketCap,
-      shares: sharesOutstanding
+      shares_outstanding: sharesOutstanding.toLocaleString(),
+      market_cap_billions: (marketCap / 1000000000).toFixed(2) + 'B'
     });
     
     return result;
   } catch (error) {
     console.error(`Error fetching market cap for ${ticker} on ${date}:`, error);
-    return fetchStockData(ticker, date, bypassCache);
+    return null;
+  }
+}
+
+// Enhanced price fetching with fallback logic for holidays/weekends
+async function getSplitAdjustedPriceWithFallback(ticker: string, requestedDate: string, apiToken: string): Promise<{ date: string; open: number; high: number; low: number; close: number; adjusted_close: number; volume: number; } | null> {
+  // Try the exact date first
+  try {
+    const exactData = await tryFetchPriceForDate(ticker, requestedDate, apiToken);
+    if (exactData) {
+      return exactData;
+    }
+  } catch (error) {
+    // Log API errors but continue to fallback dates
+    if (error instanceof Error && !error.message.includes('No data')) {
+      console.log(`⚠️ API error for ${ticker} on ${requestedDate}:`, error.message);
+    }
+  }
+
+  // If exact date fails, try nearby dates (common for holidays/weekends)
+  const fallbackDates = generateFallbackDates(requestedDate);
+  
+  for (const fallbackDate of fallbackDates) {
+    try {
+      const fallbackData = await tryFetchPriceForDate(ticker, fallbackDate, apiToken);
+      if (fallbackData) {
+        console.log(`📅 Used fallback date for ${ticker}: ${requestedDate} → ${fallbackDate}`);
+        return fallbackData;
+      }
+    } catch (error) {
+      // Continue to next fallback date
+      continue;
+    }
+  }
+
+  return null;
+}
+
+// Generate fallback dates (try 1-5 days after the requested date)
+function generateFallbackDates(dateStr: string): string[] {
+  const baseDate = new Date(dateStr);
+  const fallbackDates: string[] = [];
+  
+  // Try the next 5 days
+  for (let i = 1; i <= 5; i++) {
+    const nextDate = new Date(baseDate);
+    nextDate.setDate(baseDate.getDate() + i);
+    fallbackDates.push(nextDate.toISOString().split('T')[0]);
+  }
+  
+  return fallbackDates;
+}
+
+// Try to fetch price data for a specific date
+async function tryFetchPriceForDate(ticker: string, date: string, apiToken: string): Promise<{ date: string; open: number; high: number; low: number; close: number; adjusted_close: number; volume: number; } | null> {
+  const eodUrl = `https://eodhd.com/api/eod/${ticker}?from=${date}&to=${date}&api_token=${apiToken}&fmt=json`;
+  
+  const response = await fetch(eodUrl);
+  
+  if (!response.ok) {
+    throw new Error(`EODHD API error: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  
+  // Check if we got data
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    return null; // No data for this date
+  }
+  
+  const dayData = Array.isArray(data) ? data[0] : data;
+  
+  if (!dayData || !dayData.adjusted_close) {
+    return null;
+  }
+  
+  return {
+    date: dayData.date,
+    open: dayData.open,
+    high: dayData.high,
+    low: dayData.low,
+    close: dayData.close,
+    adjusted_close: dayData.adjusted_close,
+    volume: dayData.volume
+  };
+}
+
+// Get shares outstanding from EODHD fundamentals API
+async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
+  try {
+    const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json`;
+    
+    const response = await fetch(fundamentalsUrl);
+    if (!response.ok) {
+      console.error(`EODHD fundamentals API error for ${ticker}: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    // Check multiple possible paths for shares outstanding (following market-cap-fetcher pattern)
+    const sharesOutstanding = 
+      data?.SharesStats?.SharesOutstanding ||
+      data?.Highlights?.SharesOutstanding ||
+      data?.General?.SharesOutstanding ||
+      data?.shareStatsSharesOutstanding ||
+      data?.outstandingShares;
+
+    if (sharesOutstanding && sharesOutstanding > 0) {
+      console.log(`📊 Found shares outstanding for ${ticker}: ${sharesOutstanding.toLocaleString()}`);
+      return sharesOutstanding;
+    }
+    
+    console.error(`❌ No shares outstanding data found for ${ticker} in fundamentals API`);
+    return null;
+    
+  } catch (error) {
+    console.error(`❌ Error fetching fundamentals for ${ticker}:`, error);
+    return null;
+  }
+}
+
+// Get shares outstanding for a ticker at the start of a given year
+// First checks cache, then calls EODHD API, returns null if unavailable
+async function getSharesOutstandingForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+  try {
+    // Use January 2nd to avoid New Year's Day holiday
+    const startOfYearDate = `${year}-01-02`;
+    const cacheKey = `shares-outstanding:${ticker}:${year}`;
+    
+    // Check cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached && cached.shares_outstanding) {
+        console.log(`Cache hit for shares outstanding ${ticker} ${year}: ${cached.shares_outstanding.toLocaleString()}`);
+        return cached.shares_outstanding;
+      }
+    }
+    
+    console.log(`Cache miss for shares outstanding ${ticker} ${year}, fetching from EODHD`);
+    
+    // Get API token
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured');
+      return null;
+    }
+    
+    // Add exchange suffix if needed
+    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    
+    // Call EODHD fundamentals API
+    const sharesOutstanding = await getSharesOutstanding(tickerWithExchange, startOfYearDate, EOD_API_KEY);
+    
+    if (sharesOutstanding) {
+      // Always cache the result when API call is successful (regardless of bypassCache flag)
+      try {
+        await cache.set(cacheKey, {
+          ticker,
+          year,
+          date: startOfYearDate,
+          shares_outstanding: sharesOutstanding,
+          cached_at: new Date().toISOString()
+        });
+        console.log(`✅ Cached shares outstanding for ${ticker} ${year}: ${sharesOutstanding.toLocaleString()}`);
+      } catch (cacheError) {
+        console.warn(`Failed to cache shares outstanding for ${ticker} ${year}:`, cacheError);
+      }
+      
+      return sharesOutstanding;
+    }
+    
+    console.log(`❌ No shares outstanding data available for ${ticker} in ${year}`);
+    return null;
+    
+  } catch (error) {
+    console.error(`Error getting shares outstanding for ${ticker} in ${year}:`, error);
+    return null;
+  }
+}
+
+// Get adjusted price for a ticker at the start of a given year
+// First checks cache, then calls EODHD API, returns null if unavailable
+async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+  try {
+    // Use January 2nd to avoid New Year's Day holiday
+    const startOfYearDate = `${year}-01-02`;
+    const cacheKey = `adjusted-price:${ticker}:${year}`;
+    
+    // Check cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached && cached.adjusted_close) {
+        console.log(`Cache hit for adjusted price ${ticker} ${year}: $${cached.adjusted_close.toFixed(2)}`);
+        return cached.adjusted_close;
+      }
+    }
+    
+    console.log(`Cache miss for adjusted price ${ticker} ${year}, fetching from EODHD`);
+    
+    // Get API token
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured');
+      return null;
+    }
+    
+    // Add exchange suffix if needed
+    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    
+    // Call EODHD price API with fallback logic
+    const priceData = await getSplitAdjustedPriceWithFallback(tickerWithExchange, startOfYearDate, EOD_API_KEY);
+    
+    if (priceData && priceData.adjusted_close) {
+      // Always cache the result when API call is successful (regardless of bypassCache flag)
+      try {
+        await cache.set(cacheKey, {
+          ticker,
+          year,
+          date: priceData.date,
+          adjusted_close: priceData.adjusted_close,
+          close: priceData.close,
+          open: priceData.open,
+          high: priceData.high,
+          low: priceData.low,
+          volume: priceData.volume,
+          cached_at: new Date().toISOString()
+        });
+        console.log(`✅ Cached adjusted price for ${ticker} ${year}: $${priceData.adjusted_close.toFixed(2)} (actual date: ${priceData.date})`);
+      } catch (cacheError) {
+        console.warn(`Failed to cache adjusted price for ${ticker} ${year}:`, cacheError);
+      }
+      
+      return priceData.adjusted_close;
+    }
+    
+    console.log(`❌ No adjusted price data available for ${ticker} in ${year}`);
+    return null;
+    
+  } catch (error) {
+    console.error(`Error getting adjusted price for ${ticker} in ${year}:`, error);
+    return null;
+  }
+}
+
+// Helper function to get both price and market cap for a ticker in a given year
+// Returns null if either value is unavailable  
+async function getPriceAndMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<{ price: number; marketCap: number } | null> {
+  try {
+    // Get both values in parallel for efficiency
+    const [price, marketCap] = await Promise.all([
+      getAdjustedPriceForYear(ticker, year, bypassCache),
+      getMarketCapForYear(ticker, year, bypassCache)
+    ]);
+    
+    if (price && marketCap) {
+      return { price, marketCap };
+    }
+    
+    const missingData = [];
+    if (!price) missingData.push('price');
+    if (!marketCap) missingData.push('market cap');
+    console.log(`❌ Cannot get complete data for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
+    return null;
+    
+  } catch (error) {
+    console.error(`Error getting price and market cap for ${ticker} in ${year}:`, error);
+    return null;
+  }
+}
+
+// Get market cap for a ticker at the start of a given year
+// First checks cache, then calculates from adjusted price × shares outstanding, returns null if unavailable
+async function getMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+  try {
+    const cacheKey = `market-cap:${ticker}:${year}`;
+    
+    // Check cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached && cached.market_cap) {
+        console.log(`Cache hit for market cap ${ticker} ${year}: $${(cached.market_cap / 1000000000).toFixed(2)}B`);
+        return cached.market_cap;
+      }
+    }
+    
+    console.log(`Cache miss for market cap ${ticker} ${year}, calculating from price × shares outstanding`);
+    
+    // Get both adjusted price and shares outstanding for the year
+    const [adjustedPrice, sharesOutstanding] = await Promise.all([
+      getAdjustedPriceForYear(ticker, year, bypassCache),
+      getSharesOutstandingForYear(ticker, year, bypassCache)
+    ]);
+    
+    // Both values are required to calculate market cap
+    if (!adjustedPrice || !sharesOutstanding) {
+      const missingData = [];
+      if (!adjustedPrice) missingData.push('adjusted price');
+      if (!sharesOutstanding) missingData.push('shares outstanding');
+      console.log(`❌ Cannot calculate market cap for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
+      return null;
+    }
+    
+    // Calculate market cap = price × shares outstanding
+    const marketCap = adjustedPrice * sharesOutstanding;
+    
+    // Always cache the calculated result when successful (regardless of bypassCache flag)
+    try {
+      await cache.set(cacheKey, {
+        ticker,
+        year,
+        market_cap: marketCap,
+        adjusted_price: adjustedPrice,
+        shares_outstanding: sharesOutstanding,
+        market_cap_billions: marketCap / 1000000000,
+        formatted_market_cap: new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(marketCap),
+        calculated_at: new Date().toISOString()
+      });
+      console.log(`✅ Cached calculated market cap for ${ticker} ${year}: $${(marketCap / 1000000000).toFixed(2)}B`);
+    } catch (cacheError) {
+      console.warn(`Failed to cache market cap for ${ticker} ${year}:`, cacheError);
+    }
+    
+    console.log(`✅ Calculated market cap for ${ticker} ${year}: $${adjustedPrice.toFixed(2)} × ${sharesOutstanding.toLocaleString()} = $${(marketCap / 1000000000).toFixed(2)}B`);
+    return marketCap;
+    
+  } catch (error) {
+    console.error(`Error getting market cap for ${ticker} in ${year}:`, error);
+    return null;
   }
 }
 
@@ -281,7 +581,7 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
         high: dayData.high,
         low: dayData.low,
         volume: dayData.volume,
-        market_cap: 0, // Will be populated by fetchMarketCapData if needed
+        market_cap: 0, // Will be populated by getMarketCapForYear if needed
         shares_outstanding: 0
       };
     }
@@ -295,7 +595,7 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
           high: dayData.high,
           low: dayData.low,
           volume: dayData.volume,
-          market_cap: 0, // Will be populated by fetchMarketCapData if needed
+          market_cap: 0, // Will be populated by getMarketCapForYear if needed
           shares_outstanding: 0
         });
         console.log(`Cached price data for ${ticker} on ${date}`);
@@ -375,17 +675,15 @@ async function calculateRebalancedStrategy(
           end: endData.adjusted_close
         };
         
-        // Get market cap for weighting
-        try {
-          const cacheKey = `market-cap:${ticker}:${yearStart}`;
-          const cachedMarketCap = await cache.get(cacheKey) as any;
-          if (cachedMarketCap && cachedMarketCap.market_cap) {
-            stockMarketCaps[ticker] = cachedMarketCap.market_cap;
-          } else {
-            stockMarketCaps[ticker] = startData.adjusted_close * 1000000000;
-          }
-        } catch (error) {
-          stockMarketCaps[ticker] = startData.adjusted_close * 1000000000;
+        // Get real market cap for weighting using the new helper function
+        const marketCap = await getMarketCapForYear(ticker, year, bypassCache);
+        if (marketCap) {
+          stockMarketCaps[ticker] = marketCap;
+        } else {
+          console.error(`❌ SKIPPING ${ticker}: Could not get real market cap for ${year}`);
+          // Skip this stock entirely if we can't get real market cap data
+          availableStocks.splice(availableStocks.indexOf(ticker), 1);
+          delete stockPrices[ticker];
         }
       }
     }
@@ -404,11 +702,22 @@ async function calculateRebalancedStrategy(
         allocations[ticker] = equalWeight;
       }
     } else {
-      // Market cap weighted
-      const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
-      for (const ticker of availableStocks) {
+      // Market cap weighted - only use stocks with valid market cap data
+      const validMarketCapStocks = availableStocks.filter(ticker => stockMarketCaps[ticker] > 0);
+      
+      if (validMarketCapStocks.length === 0) {
+        console.error(`❌ No stocks with valid market cap data available in ${year} for rebalanced strategy`);
+        continue;
+      }
+      
+      const totalMarketCap = validMarketCapStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+      for (const ticker of validMarketCapStocks) {
         allocations[ticker] = stockMarketCaps[ticker] / totalMarketCap;
       }
+      
+      // Update availableStocks to only include those with valid market cap data
+      availableStocks.length = 0;
+      availableStocks.push(...validMarketCapStocks);
     }
     
     // Calculate portfolio performance for this year and track holdings
@@ -490,21 +799,15 @@ async function calculateStrategy(
       initialPrices[ticker] = startData.adjusted_close;
       finalPrices[ticker] = endData.adjusted_close;
       
-      // Try to get market cap from cache first
-      try {
-        const cacheKey = `market-cap:${ticker}:${startDate}`;
-        const cachedMarketCap = await cache.get(cacheKey) as any;
-        if (cachedMarketCap && cachedMarketCap.market_cap) {
-          initialMarketCaps[ticker] = cachedMarketCap.market_cap;
-          console.log(`Using cached market cap for ${ticker}: $${(cachedMarketCap.market_cap / 1000000000).toFixed(2)}B`);
-        } else {
-          // Fallback: use price as proxy (simplified but working approach)
-          initialMarketCaps[ticker] = startData.adjusted_close * 1000000000; // 1B shares estimate
-          console.log(`Using price proxy for ${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B`);
-        }
-      } catch (error) {
-        console.error(`Error getting market cap for ${ticker}, using price proxy:`, error);
-        initialMarketCaps[ticker] = startData.adjusted_close * 1000000000;
+      // Get real market cap using the new helper function
+      const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
+      if (marketCap) {
+        initialMarketCaps[ticker] = marketCap;
+        console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+      } else {
+        console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
+        // Set to 0 to indicate missing data
+        initialMarketCaps[ticker] = 0;
       }
     }
     // For rebalanced strategies, we'll handle availability year by year
@@ -588,56 +891,15 @@ async function calculateStrategy(
       const stockMarketCaps: Record<string, number> = {};
       
       for (const ticker of tickers) {
-        const yearData = await fetchStockData(ticker, yearStart, bypassCache, historicalData);
-        if (yearData) {
+        // Get both price and market cap using the new helper function
+        const data = await getPriceAndMarketCapForYear(ticker, year, bypassCache);
+        if (data) {
           availableStocks.push(ticker);
-          stockPrices[ticker] = yearData.adjusted_close;
-          
-          // Always get market cap data (needed for market cap weighted strategies)
-          try {
-            const cacheKey = `market-cap:${ticker}:${yearStart}`;
-            const cachedMarketCap = await cache.get(cacheKey) as any;
-            if (cachedMarketCap && cachedMarketCap.market_cap) {
-              stockMarketCaps[ticker] = cachedMarketCap.market_cap;
-            } else {
-              // Try to fetch market cap data if not in cache
-              const marketCapData = await fetchMarketCapData(ticker, yearStart, bypassCache);
-              if (marketCapData && marketCapData.market_cap) {
-                stockMarketCaps[ticker] = marketCapData.market_cap;
-                console.log(`  Fetched market cap for ${ticker}: $${(marketCapData.market_cap / 1000000000).toFixed(2)}B`);
-              } else {
-                // Better fallback: use different multipliers based on ticker to avoid equal weights
-                // This is a rough approximation when real data is unavailable
-                const fallbackMultipliers: Record<string, number> = {
-                  'AAPL': 2500000000,  // Apple typically larger
-                  'MSFT': 2000000000,  // Microsoft large
-                  'GOOGL': 1500000000, // Google large
-                  'AMZN': 1300000000,  // Amazon large
-                  'META': 800000000,   // Meta medium-large
-                  'NVDA': 1000000000,  // Nvidia (varies by year)
-                  'TSLA': 600000000,   // Tesla (varies significantly)
-                  'AVGO': 400000000,   // Broadcom smaller than big tech
-                  'JPM': 400000000,    // JPMorgan
-                  'V': 350000000,      // Visa
-                  'MA': 300000000,     // Mastercard
-                };
-                const multiplier = fallbackMultipliers[ticker] || 500000000; // Default 500M shares
-                stockMarketCaps[ticker] = yearData.adjusted_close * multiplier;
-                console.log(`  WARNING: Using fallback market cap for ${ticker}: $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B (price: $${yearData.adjusted_close.toFixed(2)} × ${(multiplier/1000000).toFixed(0)}M shares)`);
-              }
-            }
-          } catch (error) {
-            // Use same fallback logic as above
-            const fallbackMultipliers: Record<string, number> = {
-              'AAPL': 2500000000, 'MSFT': 2000000000, 'GOOGL': 1500000000,
-              'AMZN': 1300000000, 'META': 800000000, 'NVDA': 1000000000,
-              'TSLA': 600000000, 'AVGO': 400000000, 'JPM': 400000000,
-              'V': 350000000, 'MA': 300000000
-            };
-            const multiplier = fallbackMultipliers[ticker] || 500000000;
-            stockMarketCaps[ticker] = yearData.adjusted_close * multiplier;
-            console.log(`  ERROR fetching market cap for ${ticker}, using fallback: $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B`);
-          }
+          stockPrices[ticker] = data.price;
+          stockMarketCaps[ticker] = data.marketCap;
+          console.log(`  ✅ Real data for ${ticker}: $${data.price.toFixed(2)} price, $${(data.marketCap / 1000000000).toFixed(2)}B market cap`);
+        } else {
+          console.error(`  ❌ SKIPPING ${ticker}: Could not get complete data for ${year}`);
         }
       }
       
@@ -701,53 +963,61 @@ async function calculateStrategy(
           }
         } else {
           // Market Cap Weighted: New stocks get market cap allocation, funded proportionally by existing stocks
-          const allStockMarketCaps = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
-          const newStocksMarketCap = newStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
-          const newStocksTargetWeight = newStocksMarketCap / allStockMarketCaps;
-          const totalAmountNeededForNewStocks = currentPortfolioValue * newStocksTargetWeight;
+          // Only use stocks with valid market cap data
+          const validStocksWithMarketCap = availableStocks.filter(ticker => stockMarketCaps[ticker] > 0);
+          const validNewStocks = newStocks.filter(ticker => stockMarketCaps[ticker] > 0);
           
-          console.log(`  New stocks total market cap weight: ${(newStocksTargetWeight * 100).toFixed(1)}% = $${totalAmountNeededForNewStocks.toFixed(0)}`);
-          
-          // Calculate current weights of existing stocks
-          const existingPortfolioValue = currentPortfolioValue;
-          const existingWeights: Record<string, number> = {};
-          
-          for (const [ticker, holding] of Object.entries(portfolio)) {
-            if (stockPrices[ticker]) {
-              const currentValue = holding.shares * stockPrices[ticker];
-              existingWeights[ticker] = currentValue / existingPortfolioValue;
+          if (validNewStocks.length === 0) {
+            console.log(`  No new stocks with valid market cap data to add in ${year}`);
+          } else {
+            const allStockMarketCaps = validStocksWithMarketCap.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+            const newStocksMarketCap = validNewStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+            const newStocksTargetWeight = newStocksMarketCap / allStockMarketCaps;
+            const totalAmountNeededForNewStocks = currentPortfolioValue * newStocksTargetWeight;
+            
+            console.log(`  New stocks total market cap weight: ${(newStocksTargetWeight * 100).toFixed(1)}% = $${totalAmountNeededForNewStocks.toFixed(0)}`);
+            
+            // Calculate current weights of existing stocks
+            const existingPortfolioValue = currentPortfolioValue;
+            const existingWeights: Record<string, number> = {};
+            
+            for (const [ticker, holding] of Object.entries(portfolio)) {
+              if (stockPrices[ticker]) {
+                const currentValue = holding.shares * stockPrices[ticker];
+                existingWeights[ticker] = currentValue / existingPortfolioValue;
+              }
             }
-          }
-          
-          // Sell from existing stocks proportionally to their current weights
-          for (const [ticker, holding] of Object.entries(portfolio)) {
-            if (stockPrices[ticker] && existingWeights[ticker]) {
-              const contributionAmount = totalAmountNeededForNewStocks * existingWeights[ticker];
-              const sharesToSell = contributionAmount / stockPrices[ticker];
-              portfolio[ticker].shares -= sharesToSell;
-              console.log(`  ${ticker}: Sold ${sharesToSell.toFixed(0)} shares for $${contributionAmount.toFixed(0)} (${(existingWeights[ticker] * 100).toFixed(1)}% of contribution)`);
+            
+            // Sell from existing stocks proportionally to their current weights
+            for (const [ticker, holding] of Object.entries(portfolio)) {
+              if (stockPrices[ticker] && existingWeights[ticker]) {
+                const contributionAmount = totalAmountNeededForNewStocks * existingWeights[ticker];
+                const sharesToSell = contributionAmount / stockPrices[ticker];
+                portfolio[ticker].shares -= sharesToSell;
+                console.log(`  ${ticker}: Sold ${sharesToSell.toFixed(0)} shares for $${contributionAmount.toFixed(0)} (${(existingWeights[ticker] * 100).toFixed(1)}% of contribution)`);
+              }
             }
-          }
-          
-          // Buy new stocks according to their market cap weights
-          for (const ticker of newStocks) {
-            const targetWeight = stockMarketCaps[ticker] / allStockMarketCaps;
-            const investmentAmount = currentPortfolioValue * targetWeight;
-            const shares = investmentAmount / stockPrices[ticker];
             
-            portfolio[ticker] = {
-              shares: shares,
-              addedYear: year
-            };
-            
-            // Track in portfolio composition
-            portfolioComposition[ticker] = {
-              initialWeight: targetWeight,
-              finalWeight: 0, // Will be calculated at the end
-              available: true
-            };
-            
-            console.log(`  ${ticker}: Added new position with ${shares.toFixed(0)} shares for $${investmentAmount.toFixed(0)} (${(targetWeight * 100).toFixed(1)}% market cap allocation)`);
+            // Buy new stocks according to their market cap weights
+            for (const ticker of validNewStocks) {
+              const targetWeight = stockMarketCaps[ticker] / allStockMarketCaps;
+              const investmentAmount = currentPortfolioValue * targetWeight;
+              const shares = investmentAmount / stockPrices[ticker];
+              
+              portfolio[ticker] = {
+                shares: shares,
+                addedYear: year
+              };
+              
+              // Track in portfolio composition
+              portfolioComposition[ticker] = {
+                initialWeight: targetWeight,
+                finalWeight: 0, // Will be calculated at the end
+                available: true
+              };
+              
+              console.log(`  ${ticker}: Added new position with ${shares.toFixed(0)} shares for $${investmentAmount.toFixed(0)} (${(targetWeight * 100).toFixed(1)}% market cap allocation)`);
+            }
           }
         }
       } else if (year === startYear) {
@@ -774,15 +1044,22 @@ async function calculateStrategy(
             console.log(`  ${ticker}: Initial ${shares.toFixed(0)} shares for $${investmentPerStock.toFixed(0)} (${(equalWeight * 100).toFixed(1)}% allocation)`);
           }
         } else {
-          const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
-          console.log(`  Market cap weighted initial allocation - Total market cap: $${(totalMarketCap / 1000000000).toFixed(2)}B`);
+          // Market cap weighted - only use stocks with valid market cap data
+          const validMarketCapStocks = availableStocks.filter(ticker => stockMarketCaps[ticker] > 0);
           
-          for (const ticker of availableStocks) {
+          if (validMarketCapStocks.length === 0) {
+            console.error(`❌ No stocks with valid market cap data available in ${year}`);
+            continue;
+          }
+          
+          const totalMarketCap = validMarketCapStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+          console.log(`  Market cap weighted initial allocation - ${validMarketCapStocks.length} stocks with total market cap: $${(totalMarketCap / 1000000000).toFixed(2)}B`);
+          
+          for (const ticker of validMarketCapStocks) {
             const weight = stockMarketCaps[ticker] / totalMarketCap;
             const investment = initialInvestment * weight;
             const shares = investment / stockPrices[ticker];
             console.log(`  ${ticker}: Market cap $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B (${(weight * 100).toFixed(1)}%)`);
-            
             
             portfolio[ticker] = {
               shares: shares,

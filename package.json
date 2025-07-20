@@ -9,8 +9,6 @@
     "lint": "next lint",
     "test": "echo \"Error: no test specified\" && exit 1",
     "backtest": "node scripts/run-backtest.js",
-    "warm-cache": "node scripts/warmCache.js",
-    "cache-stats": "node scripts/cacheStats.js",
     "clear-cache": "node scripts/clearCache.js",
     "test-bug-fix": "node src/scripts/testEqualWeightBugFix.js"
   },

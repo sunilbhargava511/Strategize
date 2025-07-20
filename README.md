@@ -69,12 +69,6 @@ http://localhost:3001
 ```bash
 # Test the Equal Weight Buy & Hold bug fix
 npm run test-bug-fix
-
-# Check cache statistics
-npm run cache-stats
-
-# Verify cache setup
-npm run verify-cache
 ```
 
 ## Performance Results (2010-2024)*
@@ -143,10 +137,7 @@ GET /api/market-cap?ticker=AAPL&date=2024-01-15
 npm start              # Start the server
 npm run dev           # Start with nodemon for development
 npm run backtest      # Run command-line backtest
-npm run warm-cache    # Pre-populate cache with historical data
-npm run cache-stats   # Display cache statistics
 npm run clear-cache   # Clear the cache
-npm run verify-cache  # Verify cache system setup
 npm run test-bug-fix  # Test Equal Weight Buy & Hold fix
 ```
 
