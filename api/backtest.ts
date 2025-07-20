@@ -436,7 +436,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    console.log('=== BACKTEST API CALLED ===');
+    console.log('=== BACKTEST API CALLED (v2) ===');
     const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
     console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache });
 
