@@ -43,6 +43,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       spyBenchmark: results.spyBenchmark?.finalValue
     });
     
+    // Test cache access for debugging
+    console.log('Testing cache access for debugging...');
+    try {
+      const testKey = `market-cap:${tickers[0]}:${startYear}-01-02`;
+      const testData = await cache.get(testKey);
+      console.log(`Cache test for ${testKey}:`, testData ? 'Data found' : 'No data');
+    } catch (error) {
+      console.error('Cache test failed:', error);
+    }
+    
     // Generate year range
     const years: number[] = [];
     for (let year = startYear; year <= endYear; year++) {
@@ -67,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
     // Tab 3: Prices - Use actual cached price data
-    const pricesHeader = ['Year', ...years.map(y => y.toString())];
+    const pricesHeader = ['Ticker', ...years.map(y => y.toString())];
     const pricesData = [pricesHeader];
     
     // Get actual price data from cache for each ticker and year
@@ -93,6 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
         } catch (error) {
+          console.error(`Error reading price cache for ${ticker} ${year}:`, error);
           row.push('Error');
         }
       }
@@ -111,7 +122,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const marketCapData = [marketCapHeader];
     
     // Get actual market cap data from cache
-    for (const ticker of tickers) {
+    for (const ticker of allTickers) {
       const row = [ticker];
       
       for (const year of years) {
@@ -120,7 +131,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         try {
           const cachedData = await cache.get(cacheKey) as any;
-          if (cachedData && cachedData.market_cap) {
+          if (cachedData && cachedData.market_cap && cachedData.market_cap > 0) {
             const marketCapBillions = cachedData.market_cap / 1000000000;
             row.push(`$${marketCapBillions.toFixed(2)}B`);
           } else {
@@ -132,6 +143,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
           }
         } catch (error) {
+          console.error(`Error reading market cap cache for ${ticker} ${year}:`, error);
           row.push('Error');
         }
       }
@@ -201,6 +213,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mcwbData = generateStrategyData('marketCapRebalanced', 'Market Cap Weight Rebalanced');
     const mcwbSheet = XLSX.utils.aoa_to_sheet(mcwbData);
     XLSX.utils.book_append_sheet(wb, mcwbSheet, 'MCWB');
+
+    // Tab 9: Shares Outstanding - Use actual cached shares data
+    const sharesHeader = ['Ticker', ...years.map(y => y.toString())];
+    const sharesData = [sharesHeader];
+    
+    // Get actual shares outstanding data from cache
+    for (const ticker of allTickers) {
+      const row = [ticker];
+      
+      for (const year of years) {
+        const dateStr = `${year}-01-02`;
+        const cacheKey = `market-cap:${ticker}:${dateStr}`;
+        
+        try {
+          const cachedData = await cache.get(cacheKey) as any;
+          if (cachedData && cachedData.shares_outstanding && cachedData.shares_outstanding > 0) {
+            const sharesBillions = cachedData.shares_outstanding / 1000000000;
+            row.push(`${sharesBillions.toFixed(2)}B`);
+          } else {
+            // Check if stock didn't exist yet (like ABNB before 2020)
+            if (ticker === 'ABNB' && year < 2020) {
+              row.push('-');
+            } else {
+              row.push('N/A');
+            }
+          }
+        } catch (error) {
+          console.error(`Error reading shares cache for ${ticker} ${year}:`, error);
+          row.push('Error');
+        }
+      }
+      
+      sharesData.push(row);
+    }
+    
+    // Add note that data comes from cache
+    sharesData.push([]);
+    sharesData.push(['Note: Shares outstanding data from cached EODHD API calls']);
+    const sharesSheet = XLSX.utils.aoa_to_sheet(sharesData);
+    XLSX.utils.book_append_sheet(wb, sharesSheet, 'Shares Outstanding');
 
     // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
