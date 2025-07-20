@@ -712,6 +712,10 @@ async function calculateRebalancedStrategy(
 ): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>; yearlyValues: Record<number, number>; }> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
+  // Track missing market cap data for detailed error reporting
+  const missingMarketCapData: Array<{ticker: string, year: number, hasPrice: boolean, hasSharesOutstanding: boolean}> = [];
+  const successfulMarketCapData: Array<{ticker: string, year: number, marketCap: number}> = [];
+  
   let portfolioValue = initialInvestment;
   const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>> = {};
   const yearlyValues: Record<number, number> = {};
@@ -829,6 +833,24 @@ async function calculateRebalancedStrategy(
     console.log(`${year} portfolio value: $${Math.floor(portfolioValue).toLocaleString()}`);
   }
   
+  // Report missing market cap data if any
+  if (missingMarketCapData.length > 0) {
+    console.log(`\n🚨 REBALANCED ${strategyType.toUpperCase()} STRATEGY DIAGNOSTIC:`);
+    console.log(`📊 Successfully got market cap: ${successfulMarketCapData.length} stocks`);
+    console.log(`❌ Failed to get market cap: ${missingMarketCapData.length} stocks`);
+    
+    // Group by issue type
+    const stocksWithPriceButNoShares = missingMarketCapData.filter(item => item.hasPrice && !item.hasSharesOutstanding);
+    
+    if (stocksWithPriceButNoShares.length > 0) {
+      console.log(`\n🚨 STOCKS WITH PRICE BUT NO SHARES OUTSTANDING (${stocksWithPriceButNoShares.length}):`);
+      stocksWithPriceButNoShares.forEach(item => 
+        console.log(`   ${item.ticker} (${item.year}): Has price, missing shares outstanding from EODHD fundamentals API`)
+      );
+    }
+    console.log(`\n`);
+  }
+
   return { finalValue: portfolioValue, yearlyHoldings, yearlyValues };
 }
 
