@@ -55,6 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fetch price data from EOD API - ticker should already include exchange suffix
     const tickerWithExchange = tickerStr.includes('.') ? tickerStr : `${tickerStr}.US`;
     const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${dateStr}&to=${dateStr}&api_token=${EOD_API_KEY}&fmt=json`;
+    
+    console.log(`Calling EODHD API: ${priceUrl.replace(EOD_API_KEY, 'XXXXX')}`);
     const priceResponse = await fetch(priceUrl);
     
     if (!priceResponse.ok) {
