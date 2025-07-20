@@ -159,7 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const portfolioData = [['A', 'Start Year', '2017', '2025']];
     sortedTickers.forEach(ticker => {
       const info = tickerInfo[ticker];
-      portfolioData.push([ticker, '', info?.startYear || '', info?.endYear || '']);
+      portfolioData.push([ticker, '', info?.startYear?.toString() || '', info?.endYear?.toString() || '']);
     });
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
