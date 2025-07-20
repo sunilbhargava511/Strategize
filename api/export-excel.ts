@@ -31,6 +31,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const initialInvestment = parameters?.initialInvestment || 1000000;
     const tickers = parameters?.tickers || [];
     
+    // Debug logging
+    console.log('Export data:', { startYear, endYear, initialInvestment, tickerCount: tickers.length, tickers: tickers.slice(0, 5) });
+    
     // Generate year range
     const years: number[] = [];
     for (let year = startYear; year <= endYear; year++) {
@@ -94,10 +97,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Helper function to simulate stock availability (some stocks become available later)
     const getAvailableStocks = (year: number, allTickers: string[]) => {
-      // Simulate that some stocks become available in later years
-      const yearIndex = years.indexOf(year);
-      const availabilityThreshold = yearIndex / years.length;
-      return allTickers.filter((_, index) => (index / allTickers.length) <= availabilityThreshold + 0.5);
+      // For now, make all stocks available from the start to debug the zero values issue
+      // Later we can add gradual availability
+      return allTickers;
+      
+      // Original logic (commented out for debugging):
+      // const yearIndex = years.indexOf(year);
+      // const availabilityThreshold = yearIndex / years.length;
+      // return allTickers.filter((_, index) => (index / allTickers.length) <= availabilityThreshold + 0.5);
     };
 
     // Helper function to generate simulation data with proper algorithm logic
@@ -392,6 +399,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Set headers for file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="Portfolio Simulation Results-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     
     return res.status(200).send(excelBuffer);
   } catch (error: any) {
