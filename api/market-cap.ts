@@ -52,8 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Fetch price data from EOD API
-    const priceUrl = `https://eodhd.com/api/eod/${tickerStr}.US?from=${dateStr}&to=${dateStr}&api_token=${EOD_API_KEY}&fmt=json`;
+    // Fetch price data from EOD API - ticker should already include exchange suffix
+    const tickerWithExchange = tickerStr.includes('.') ? tickerStr : `${tickerStr}.US`;
+    const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${dateStr}&to=${dateStr}&api_token=${EOD_API_KEY}&fmt=json`;
     const priceResponse = await fetch(priceUrl);
     
     if (!priceResponse.ok) {
@@ -65,9 +66,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!priceData || !Array.isArray(priceData) || priceData.length === 0) {
       return res.status(404).json({ 
         error: 'No data found',
-        message: `No price data available for ${tickerStr} on ${dateStr}`,
-        ticker: tickerStr,
-        date: dateStr
+        message: `No price data available for ${tickerWithExchange} on ${dateStr}. Ticker may be defunct or delisted.`,
+        ticker: tickerWithExchange,
+        date: dateStr,
+        is_defunct: true
       });
     }
 
@@ -79,7 +81,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let marketCap = 0;
     
     try {
-      const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerStr}.US?api_token=${EOD_API_KEY}&fmt=json`;
+      const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
       const fundamentalsResponse = await fetch(fundamentalsUrl);
       
       if (fundamentalsResponse.ok) {
@@ -115,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Prepare result with all data
     const result = {
-      ticker: `${tickerStr}.US`,
+      ticker: tickerWithExchange,
       date: dateStr,
       price: dayData.close,
       adjusted_close: dayData.adjusted_close,

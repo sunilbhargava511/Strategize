@@ -18,34 +18,44 @@ interface StrategyResult {
 
 async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
   try {
+    // Add .US exchange suffix if not present
+    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    
     // Use our existing market-cap API endpoint
     const bypassParam = bypassCache ? '&bypass_cache=true' : '';
-    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${ticker}&date=${date}${bypassParam}`);
+    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${tickerWithExchange}&date=${date}${bypassParam}`);
     
-    console.log(`Fetching data for ${ticker} on ${date}, response status: ${response.status}`);
+    console.log(`Fetching data for ${tickerWithExchange} on ${date}, response status: ${response.status}`);
     
     if (!response.ok) {
-      console.error(`Failed to fetch data for ${ticker} on ${date}, status: ${response.status}`);
+      console.error(`Failed to fetch data for ${tickerWithExchange} on ${date}, status: ${response.status}`);
       return null;
     }
     
     const data = await response.json();
-    console.log(`Data for ${ticker} on ${date}:`, { 
-      price: data.adjusted_close || data.price, 
+    console.log(`Data for ${tickerWithExchange} on ${date}:`, { 
+      adjusted_close: data.adjusted_close,
+      price: data.price, 
       from_cache: data.from_cache,
-      raw_response: data
+      error: data.error
     });
     
-    // Check if we got valid price data
+    // Check for API errors (like defunct tickers)
+    if (data.error) {
+      console.error(`API error for ${tickerWithExchange} on ${date}:`, data.error);
+      return null;
+    }
+    
+    // Check if we got valid adjusted price data (prioritize adjusted_close for splits)
     if (!data.adjusted_close && !data.price) {
-      console.error(`No price data found for ${ticker} on ${date}:`, data);
+      console.error(`No price data found for ${tickerWithExchange} on ${date}:`, data);
       return null;
     }
     
     return {
-      ticker: ticker, // Use original ticker, not the .US version
+      ticker: ticker, // Return original ticker without exchange suffix for consistency
       date: data.date,
-      price: data.adjusted_close || data.price,
+      price: data.adjusted_close || data.price, // Prefer adjusted_close for split handling
       adjusted_close: data.adjusted_close || data.price
     };
   } catch (error) {
@@ -76,18 +86,26 @@ async function calculateStrategy(
   const startDate = `${startYear}-01-02`;
   const endDate = `${endYear}-12-31`;
   
-  // Fetch initial prices
+  // Fetch initial and final prices for all tickers
   const initialPrices: Record<string, number> = {};
   const finalPrices: Record<string, number> = {};
+  const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
   for (const ticker of tickers) {
     const startData = await fetchStockData(ticker, startDate, bypassCache);
     const endData = await fetchStockData(ticker, endDate, bypassCache);
     
+    tickerAvailability[ticker] = {
+      hasStart: !!startData,
+      hasEnd: !!endData
+    };
+    
+    // For buy & hold strategies, we need both start and end prices
     if (startData && endData) {
       initialPrices[ticker] = startData.adjusted_close;
       finalPrices[ticker] = endData.adjusted_close;
     }
+    // For rebalanced strategies, we'll handle availability year by year
   }
   
   // Calculate returns (simplified - not handling yearly rebalancing yet)
@@ -98,6 +116,7 @@ async function calculateStrategy(
     validTickers: validTickers.slice(0, 3),
     initialPrices: Object.fromEntries(Object.entries(initialPrices).slice(0, 3)),
     finalPrices: Object.fromEntries(Object.entries(finalPrices).slice(0, 3)),
+    tickerAvailability: Object.fromEntries(Object.entries(tickerAvailability).slice(0, 3)),
     startDate,
     endDate,
     strategyType,
@@ -280,7 +299,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         equalWeightResult: equalWeightBuyHold.finalValue,
         marketCapResult: marketCapBuyHold.finalValue,
         equalWeightRebalancedResult: equalWeightRebalanced.finalValue,
-        marketCapRebalancedResult: marketCapRebalanced.finalValue
+        marketCapRebalancedResult: marketCapRebalanced.finalValue,
+        requestedTickers: tickers,
+        usingExchangeSuffix: true
       },
       message: tickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
