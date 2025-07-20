@@ -807,8 +807,8 @@ async function calculateRebalancedStrategy(
       yearEndValue += stockEndValue;
       
       // Store holdings data
-      // Calculate shares outstanding from market cap and price  
-      const sharesOutstanding = stockMarketCaps[ticker] ? Math.round(stockMarketCaps[ticker] / stockPrices[ticker].start) : undefined;
+      // Get real shares outstanding from EODHD API
+      const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
       
       yearlyHoldings[year][ticker] = {
         weight: allocation,
@@ -1168,8 +1168,8 @@ async function calculateStrategy(
           const currentValue = holding.shares * currentPrice;
           totalPortfolioValue += currentValue;
           
-          // Calculate shares outstanding from market cap and price
-          const sharesOutstanding = stockMarketCaps[ticker] && currentPrice ? Math.round(stockMarketCaps[ticker] / currentPrice) : undefined;
+          // Get real shares outstanding from EODHD API
+          const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
           
           yearlyHoldings[year][ticker] = {
             weight: 0, // Will be calculated below
