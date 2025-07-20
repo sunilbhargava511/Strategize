@@ -24,7 +24,7 @@ export default function CacheManager() {
   const handleExportCache = async () => {
     setIsExporting(true)
     try {
-      const response = await fetch('/api/cache-export')
+      const response = await fetch('/api/cache-export-excel')
       
       if (!response.ok) {
         throw new Error('Export failed')
@@ -37,7 +37,7 @@ export default function CacheManager() {
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `cache-export-${new Date().toISOString().split('T')[0]}.csv`
+      a.download = `cache-export-${new Date().toISOString().split('T')[0]}.xlsx`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -108,10 +108,10 @@ export default function CacheManager() {
             <span className="text-2xl">📥</span>
             <div className="text-left">
               <div className="font-medium">
-                {isExporting ? 'Exporting...' : 'Export Historical Prices'}
+                {isExporting ? 'Exporting...' : 'Export Historical Data'}
               </div>
               <div className="text-sm text-gray-600">
-                Download all cached stock price data as CSV
+                Download as Excel with Price, Market Cap & Shares tabs
               </div>
             </div>
           </button>
@@ -136,10 +136,11 @@ export default function CacheManager() {
             <div className="text-sm text-blue-800">
               <p className="font-medium mb-1">About Cache Export:</p>
               <ul className="list-disc list-inside space-y-1">
-                <li>Exports all historical price data stored in cache</li>
-                <li>Includes ticker, date, price, volume, and OHLC data</li>
-                <li>Format: CSV file compatible with Excel</li>
-                <li>Use this to backup your cached data or analyze offline</li>
+                <li>Exports data organized by year in Excel format</li>
+                <li>Tab 1: Prices - Adjusted close prices by ticker and year</li>
+                <li>Tab 2: Market Cap - Calculated market capitalization</li>
+                <li>Tab 3: Shares Outstanding - Estimated share counts</li>
+                <li>Tab 4: Summary - Export metadata and notes</li>
               </ul>
             </div>
           </div>
