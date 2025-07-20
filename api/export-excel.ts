@@ -60,7 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const pricesData = [pricesHeader];
     
     // Add SPY and RSP first, then portfolio tickers
-    ['SPY', 'RSP', ...tickers.slice(0, 30)].forEach(ticker => {
+    ['SPY', 'RSP', ...tickers.slice(0, 30)].forEach((ticker: string) => {
       const row = [ticker];
       years.forEach((year, index) => {
         // Simulate price growth: start at ~$50-300, grow 8-15% annually with some variation
@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
     const marketCapData = [marketCapHeader];
     
-    tickers.slice(0, 30).forEach(ticker => {
+    tickers.slice(0, 30).forEach((ticker: string) => {
       const row = [ticker];
       years.forEach((year, index) => {
         // Simulate market cap: start at $10-50B, grow with stock price
@@ -115,7 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let stockMarketCaps: { [ticker: string]: number[] } = {};
       
       // Generate price and market cap data for all tickers
-      tickers.slice(0, 30).forEach(ticker => {
+      tickers.slice(0, 30).forEach((ticker: string) => {
         stockPrices[ticker] = [];
         stockMarketCaps[ticker] = [];
         let basePrice = 50 + (ticker.charCodeAt(0) * 3);
@@ -147,14 +147,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Initial allocation
           if (isEqualWeight) {
             const equalAllocation = portfolioValue / availableStocks.length;
-            availableStocks.forEach(ticker => {
+            availableStocks.forEach((ticker: string) => {
               const shares = equalAllocation / stockPrices[ticker][yearIndex];
               stockHoldings[ticker] = { shares, value: equalAllocation };
             });
           } else {
             // Market cap weighted
             const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
-            availableStocks.forEach(ticker => {
+            availableStocks.forEach((ticker: string) => {
               const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
               const allocation = portfolioValue * weight;
               const shares = allocation / stockPrices[ticker][yearIndex];
@@ -165,7 +165,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           // Update portfolio value based on price changes
           portfolioValue = 0;
-          Object.keys(stockHoldings).forEach(ticker => {
+          Object.keys(stockHoldings).forEach((ticker: string) => {
             stockHoldings[ticker].value = stockHoldings[ticker].shares * stockPrices[ticker][yearIndex];
             portfolioValue += stockHoldings[ticker].value;
           });
@@ -176,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               const equalAllocation = portfolioValue / availableStocks.length;
               // Reset all holdings for equal weight rebalancing
               stockHoldings = {};
-              availableStocks.forEach(ticker => {
+              availableStocks.forEach((ticker: string) => {
                 const shares = equalAllocation / stockPrices[ticker][yearIndex];
                 stockHoldings[ticker] = { shares, value: equalAllocation };
               });
@@ -184,7 +184,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               // Market cap weighted rebalancing
               const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
               stockHoldings = {};
-              availableStocks.forEach(ticker => {
+              availableStocks.forEach((ticker: string) => {
                 const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
                 const allocation = portfolioValue * weight;
                 const shares = allocation / stockPrices[ticker][yearIndex];
@@ -204,13 +204,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 
                 // Reduce existing holdings proportionally
                 const reductionFactor = (portfolioValue - totalNewAllocation) / currentAllocations;
-                Object.keys(stockHoldings).forEach(ticker => {
+                Object.keys(stockHoldings).forEach((ticker: string) => {
                   stockHoldings[ticker].shares *= reductionFactor;
                   stockHoldings[ticker].value *= reductionFactor;
                 });
                 
                 // Add new stocks
-                newStocks.forEach(ticker => {
+                newStocks.forEach((ticker: string) => {
                   const shares = targetAllocation / stockPrices[ticker][yearIndex];
                   stockHoldings[ticker] = { shares, value: targetAllocation };
                 });
@@ -222,13 +222,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 
                 // Reduce existing holdings proportionally
                 const reductionFactor = (portfolioValue - newStocksAllocation) / portfolioValue;
-                Object.keys(stockHoldings).forEach(ticker => {
+                Object.keys(stockHoldings).forEach((ticker: string) => {
                   stockHoldings[ticker].shares *= reductionFactor;
                   stockHoldings[ticker].value *= reductionFactor;
                 });
                 
                 // Add new stocks with market cap weights
-                newStocks.forEach(ticker => {
+                newStocks.forEach((ticker: string) => {
                   const weight = stockMarketCaps[ticker][yearIndex] / newStocksTotalMarketCap;
                   const allocation = newStocksAllocation * weight;
                   const shares = allocation / stockPrices[ticker][yearIndex];
@@ -250,7 +250,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const stockTimeSeriesData: { [ticker: string]: string[] } = {};
       
       // Initialize tracking for each ticker
-      tickers.slice(0, 30).forEach(ticker => {
+      tickers.slice(0, 30).forEach((ticker: string) => {
         stockTimeSeriesData[ticker] = [ticker];
       });
       
@@ -265,14 +265,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Initial allocation
           if (isEqualWeight) {
             const equalAllocation = portfolioValueTracker / availableStocks.length;
-            availableStocks.forEach(ticker => {
+            availableStocks.forEach((ticker: string) => {
               const shares = equalAllocation / stockPrices[ticker][yearIndex];
               stockHoldingsTracker[ticker] = { shares, value: equalAllocation };
             });
           } else {
             // Market cap weighted
             const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
-            availableStocks.forEach(ticker => {
+            availableStocks.forEach((ticker: string) => {
               const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
               const allocation = portfolioValueTracker * weight;
               const shares = allocation / stockPrices[ticker][yearIndex];
@@ -282,7 +282,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } else {
           // Update values and apply strategy logic (same as above)
           portfolioValueTracker = 0;
-          Object.keys(stockHoldingsTracker).forEach(ticker => {
+          Object.keys(stockHoldingsTracker).forEach((ticker: string) => {
             stockHoldingsTracker[ticker].value = stockHoldingsTracker[ticker].shares * stockPrices[ticker][yearIndex];
             portfolioValueTracker += stockHoldingsTracker[ticker].value;
           });
@@ -292,14 +292,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (isEqualWeight) {
               const equalAllocation = portfolioValueTracker / availableStocks.length;
               stockHoldingsTracker = {};
-              availableStocks.forEach(ticker => {
+              availableStocks.forEach((ticker: string) => {
                 const shares = equalAllocation / stockPrices[ticker][yearIndex];
                 stockHoldingsTracker[ticker] = { shares, value: equalAllocation };
               });
             } else {
               const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker][yearIndex], 0);
               stockHoldingsTracker = {};
-              availableStocks.forEach(ticker => {
+              availableStocks.forEach((ticker: string) => {
                 const weight = stockMarketCaps[ticker][yearIndex] / totalMarketCap;
                 const allocation = portfolioValueTracker * weight;
                 const shares = allocation / stockPrices[ticker][yearIndex];
@@ -316,12 +316,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const totalNewAllocation = newStocks.length * targetAllocation;
                 const reductionFactor = (portfolioValueTracker - totalNewAllocation) / currentAllocations;
                 
-                Object.keys(stockHoldingsTracker).forEach(ticker => {
+                Object.keys(stockHoldingsTracker).forEach((ticker: string) => {
                   stockHoldingsTracker[ticker].shares *= reductionFactor;
                   stockHoldingsTracker[ticker].value *= reductionFactor;
                 });
                 
-                newStocks.forEach(ticker => {
+                newStocks.forEach((ticker: string) => {
                   const shares = targetAllocation / stockPrices[ticker][yearIndex];
                   stockHoldingsTracker[ticker] = { shares, value: targetAllocation };
                 });
@@ -331,12 +331,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 const newStocksAllocation = portfolioValueTracker * (newStocksTotalMarketCap / allStocksTotalMarketCap);
                 const reductionFactor = (portfolioValueTracker - newStocksAllocation) / portfolioValueTracker;
                 
-                Object.keys(stockHoldingsTracker).forEach(ticker => {
+                Object.keys(stockHoldingsTracker).forEach((ticker: string) => {
                   stockHoldingsTracker[ticker].shares *= reductionFactor;
                   stockHoldingsTracker[ticker].value *= reductionFactor;
                 });
                 
-                newStocks.forEach(ticker => {
+                newStocks.forEach((ticker: string) => {
                   const weight = stockMarketCaps[ticker][yearIndex] / newStocksTotalMarketCap;
                   const allocation = newStocksAllocation * weight;
                   const shares = allocation / stockPrices[ticker][yearIndex];
@@ -348,7 +348,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         
         // Record each stock's value for this year
-        tickers.slice(0, 30).forEach(ticker => {
+        tickers.slice(0, 30).forEach((ticker: string) => {
           if (stockHoldingsTracker[ticker]) {
             const value = stockHoldingsTracker[ticker].value;
             stockTimeSeriesData[ticker].push(`$${Math.floor(value).toLocaleString()}`);
@@ -359,7 +359,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
       
       // Add the time series data to simData
-      tickers.slice(0, 30).forEach(ticker => {
+      tickers.slice(0, 30).forEach((ticker: string) => {
         simData.push(stockTimeSeriesData[ticker]);
       });
       
