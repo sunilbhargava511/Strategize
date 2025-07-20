@@ -53,6 +53,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
     { key: 'marketCapBuyHold', name: 'Market Cap Buy & Hold', icon: '📈' },
     { key: 'equalWeightRebalanced', name: 'Equal Weight Rebalanced', icon: '🔄' },
     { key: 'marketCapRebalanced', name: 'Market Cap Rebalanced', icon: '📊' },
+    { key: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
   ]
 
   return (

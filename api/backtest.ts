@@ -343,11 +343,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Calculate real results using EODHD data
     console.log(`EODHD_API_TOKEN found, running real backtest for ${tickers.length} tickers from ${startYear} to ${endYear}`);
     
-    const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced] = await Promise.all([
+    const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
       calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
       calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache),
       calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache)
+      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache),
+      calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache)
     ]);
 
     const results = {
@@ -355,6 +356,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       marketCapBuyHold,
       equalWeightRebalanced,
       marketCapRebalanced,
+      spyBenchmark,
       parameters: { 
         startYear, 
         endYear, 
@@ -367,12 +369,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         marketCapResult: marketCapBuyHold.finalValue,
         equalWeightRebalancedResult: equalWeightRebalanced.finalValue,
         marketCapRebalancedResult: marketCapRebalanced.finalValue,
+        spyBenchmarkResult: spyBenchmark.finalValue,
         requestedTickers: tickers,
         usingExchangeSuffix: true
       },
       message: tickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
-        'Calculations based on real EODHD market data.'
+        'Calculations based on real EODHD market data with SPY benchmark.'
     };
 
     // Cache forever if end year is in the past, otherwise cache for 1 day (unless bypassed)
