@@ -1,6 +1,6 @@
 {
   "name": "stock-backtesting-tool",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A comprehensive backtesting application for comparing different investment strategies using S&P 500 historical data",
   "scripts": {
     "dev": "next dev",
