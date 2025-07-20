@@ -45,10 +45,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ['Strategies', startYear.toString(), endYear.toString(), 'Annualized'],
       ['MC B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.marketCapBuyHold?.annualizedReturn || 0).toFixed(1)}%`],
       ['MC', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.marketCapRebalanced?.annualizedReturn || 0).toFixed(1)}%`],
-      ['SPY', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment * 2.4).toLocaleString()}.00`, `${(results.spyBenchmark?.annualizedReturn || 12.8).toFixed(1)}%`], // SPY benchmark
+      ['SPY', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.spyBenchmark?.annualizedReturn || 0).toFixed(1)}%`], // SPY benchmark
       ['EQW', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(1)}%`],
       ['EQW B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(1)}%`],
-      ['RSP', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(initialInvestment * 2.1).toLocaleString()}.00`, '9.1%'] // RSP benchmark
+      ['RSP', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(initialInvestment).toLocaleString()}.00`, '0.0%'] // RSP benchmark (disabled when no data)
     ];
     const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
     XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
