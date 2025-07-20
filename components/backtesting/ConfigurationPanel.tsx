@@ -63,7 +63,7 @@ export default function ConfigurationPanel({ configuration, onConfigurationChang
               </label>
               <select
                 value={configuration.startYear}
-                onChange={(e) => handleChange('startYear', parseInt(e.target.value))}
+                onChange={(e) => handleChange('startYear', parseInt((e.target as HTMLSelectElement).value))}
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 {Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i).map(year => (
@@ -78,7 +78,7 @@ export default function ConfigurationPanel({ configuration, onConfigurationChang
               </label>
               <select
                 value={configuration.endYear}
-                onChange={(e) => handleChange('endYear', parseInt(e.target.value))}
+                onChange={(e) => handleChange('endYear', parseInt((e.target as HTMLSelectElement).value))}
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
               >
                 {Array.from({ length: maxYear - configuration.startYear + 1 }, (_, i) => configuration.startYear + i).map(year => (
@@ -108,7 +108,7 @@ export default function ConfigurationPanel({ configuration, onConfigurationChang
               <input
                 type="number"
                 value={configuration.initialInvestment}
-                onChange={(e) => handleChange('initialInvestment', parseInt(e.target.value) || 0)}
+                onChange={(e) => handleChange('initialInvestment', parseInt((e.target as HTMLInputElement).value) || 0)}
                 min="1000"
                 max="100000000"
                 step="1000"

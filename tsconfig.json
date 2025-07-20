@@ -3,7 +3,9 @@
     "target": "es2020",
     "module": "commonjs",
     "lib": [
-      "es2020"
+      "es2020",
+      "dom",
+      "dom.iterable"
     ],
     "allowJs": true,
     "skipLibCheck": true,
@@ -27,12 +29,14 @@
   },
   "include": [
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
+    "pages/**/*",
+    "components/**/*",
     "api/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/**/*",
+    "scripts/**/*"
   ]
 }
