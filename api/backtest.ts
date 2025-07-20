@@ -22,12 +22,16 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     const bypassParam = bypassCache ? '&bypass_cache=true' : '';
     const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${ticker}&date=${date}${bypassParam}`);
     
+    console.log(`Fetching data for ${ticker} on ${date}, response status: ${response.status}`);
+    
     if (!response.ok) {
-      console.error(`Failed to fetch data for ${ticker} on ${date}`);
+      console.error(`Failed to fetch data for ${ticker} on ${date}, status: ${response.status}`);
       return null;
     }
     
     const data = await response.json();
+    console.log(`Data for ${ticker} on ${date}:`, { price: data.adjusted_close || data.price, from_cache: data.from_cache });
+    
     return {
       ticker: data.ticker,
       date: data.date,
