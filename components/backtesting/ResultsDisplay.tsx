@@ -227,6 +227,71 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
             </div>
           </div>
         </div>
+
+        {/* Yearly Holdings Breakdown */}
+        {data.yearlyHoldings && Object.keys(data.yearlyHoldings).length > 0 && (
+          <div className="bg-gray-50 rounded-lg p-6">
+            <h4 className="font-semibold text-gray-900 mb-4">Yearly Holdings Breakdown</h4>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="text-left p-3 font-semibold">Ticker</th>
+                    {Object.keys(data.yearlyHoldings).sort().map(year => (
+                      <th key={year} className="text-center p-3 font-semibold">{year}</th>
+                    ))}
+                  </tr>
+                  <tr className="border-b border-gray-200 text-xs text-gray-600">
+                    <th className="text-left p-2">Weight / Shares / Value</th>
+                    {Object.keys(data.yearlyHoldings).sort().map(year => (
+                      <th key={year} className="text-center p-2">Weight / Shares / Value</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Get all unique tickers from all years
+                    const allTickers = new Set<string>()
+                    Object.values(data.yearlyHoldings).forEach((yearData: any) => {
+                      Object.keys(yearData).forEach(ticker => allTickers.add(ticker))
+                    })
+                    
+                    return Array.from(allTickers).sort().map(ticker => (
+                      <tr key={ticker} className="border-b border-gray-100 hover:bg-white">
+                        <td className="p-3 font-mono font-medium">{ticker}</td>
+                        {Object.keys(data.yearlyHoldings).sort().map(year => {
+                          const holding = data.yearlyHoldings[year]?.[ticker]
+                          return (
+                            <td key={year} className="p-3 text-center text-xs">
+                              {holding ? (
+                                <div className="space-y-1">
+                                  <div className="font-medium text-blue-600">
+                                    {(holding.weight * 100).toFixed(1)}%
+                                  </div>
+                                  <div className="text-gray-600">
+                                    {Math.round(holding.shares).toLocaleString()}
+                                  </div>
+                                  <div className="text-gray-800 font-medium">
+                                    {formatCurrency(holding.value)}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-gray-400">—</div>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 text-xs text-gray-500">
+              Each cell shows: Weight % / Number of Shares / Dollar Value
+            </div>
+          </div>
+        )}
       </div>
     )
   }
