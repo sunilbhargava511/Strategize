@@ -48,7 +48,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const testKey = `market-cap:${tickers[0]}:${startYear}-01-02`;
       const testData = await cache.get(testKey);
-      console.log(`Cache test for ${testKey}:`, testData ? 'Data found' : 'No data');
+      console.log(`Cache test for ${testKey}:`, testData ? { found: true, keys: Object.keys(testData) } : 'No data');
+      
+      // Also try a few other common patterns
+      const testKey2 = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickers.sort().join(',')}`;
+      const backTestData = await cache.get(testKey2);
+      console.log(`Backtest cache test for ${testKey2}:`, backTestData ? 'Backtest data found' : 'No backtest data');
+      
+      // Try to find what cache keys actually exist by testing variations
+      const variations = [
+        `market-cap:${tickers[0].toUpperCase()}:${startYear}-01-02`,
+        `price:${tickers[0]}:${startYear}-01-02`,
+        `stock:${tickers[0]}:${startYear}-01-02`
+      ];
+      
+      for (const varKey of variations) {
+        const varData = await cache.get(varKey);
+        if (varData) {
+          console.log(`Found cache data with key pattern: ${varKey}`, Object.keys(varData));
+          break;
+        }
+      }
     } catch (error) {
       console.error('Cache test failed:', error);
     }
@@ -92,6 +112,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         try {
           const cachedData = await cache.get(cacheKey) as any;
+          console.log(`Cache lookup for ${cacheKey}:`, cachedData ? { hasData: true, hasPrice: !!cachedData.adjusted_close, price: cachedData.adjusted_close } : 'No data');
+          
           if (cachedData && cachedData.adjusted_close) {
             row.push(`$${cachedData.adjusted_close.toFixed(2)}`);
           } else {
