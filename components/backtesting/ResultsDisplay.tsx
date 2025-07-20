@@ -20,10 +20,16 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
 
   const handleExcelDownload = async () => {
     try {
+      // Determine if cache was bypassed based on results metadata
+      const bypassCache = results.from_cache === false || results.message?.includes('real');
+      
       const response = await fetch('/api/export-excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ results })
+        body: JSON.stringify({ 
+          results,
+          bypass_cache: bypassCache
+        })
       });
 
       if (!response.ok) {

@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { results, historicalData } = req.body;
+    const { results, historicalData, bypass_cache = false } = req.body;
 
     if (!results) {
       return res.status(400).json({ error: 'No results data provided' });
@@ -96,86 +96,156 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
-    // Tab 3: Prices - Use actual cached price data
+    // Tab 3: Prices - Use actual price data (from cache or fresh fetch)
     const pricesHeader = ['Ticker', ...years.map(y => y.toString())];
     const pricesData = [pricesHeader];
     
-    // Get actual price data from cache for each ticker and year
+    // Get actual price data for each ticker and year
     const allTickers = ['SPY', ...tickers];
+    
+    // Helper function to fetch price data
+    async function fetchPriceData(ticker: string, date: string) {
+      if (bypass_cache) {
+        // When cache is bypassed, fetch fresh data from EODHD
+        try {
+          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+          if (!EOD_API_KEY) {
+            return null;
+          }
+          
+          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+          const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
+          
+          const response = await fetch(priceUrl);
+          if (!response.ok) {
+            return null;
+          }
+          
+          const data = await response.json();
+          if (!data || !Array.isArray(data) || data.length === 0) {
+            return null;
+          }
+          
+          const dayData = data[0];
+          return dayData?.adjusted_close || dayData?.close;
+        } catch (error) {
+          console.error(`Error fetching fresh price for ${ticker} on ${date}:`, error);
+          return null;
+        }
+      } else {
+        // Use cached data
+        try {
+          const cacheKey = `market-cap:${ticker}:${date}`;
+          const cachedData = await cache.get(cacheKey) as any;
+          console.log(`Cache lookup for ${cacheKey}:`, cachedData ? { hasData: true, hasPrice: !!cachedData.adjusted_close, price: cachedData.adjusted_close } : 'No data');
+          return cachedData?.adjusted_close;
+        } catch (error) {
+          console.error(`Error reading price cache for ${ticker} ${date}:`, error);
+          return null;
+        }
+      }
+    }
     
     for (const ticker of allTickers) {
       const row = [ticker];
       
       for (const year of years) {
         const dateStr = `${year}-01-02`;
-        const cacheKey = `market-cap:${ticker}:${dateStr}`;
         
-        try {
-          const cachedData = await cache.get(cacheKey) as any;
-          console.log(`Cache lookup for ${cacheKey}:`, cachedData ? { hasData: true, hasPrice: !!cachedData.adjusted_close, price: cachedData.adjusted_close } : 'No data');
-          
-          if (cachedData && cachedData.adjusted_close) {
-            row.push(`$${cachedData.adjusted_close.toFixed(2)}`);
+        const price = await fetchPriceData(ticker, dateStr);
+        
+        if (price) {
+          row.push(`$${price.toFixed(2)}`);
+        } else {
+          // Check if stock didn't exist yet (like ABNB before 2020)
+          if (ticker === 'ABNB' && year < 2020) {
+            row.push('-');
           } else {
-            // Check if stock didn't exist yet (like ABNB before 2020)
-            if (ticker === 'ABNB' && year < 2020) {
-              row.push('-');
-            } else {
-              row.push('N/A');
-            }
+            row.push('N/A');
           }
-        } catch (error) {
-          console.error(`Error reading price cache for ${ticker} ${year}:`, error);
-          row.push('Error');
         }
       }
       
       pricesData.push(row);
     }
     
-    // Add note that data comes from cache
+    // Add note about data source
     pricesData.push([]);
-    pricesData.push(['Note: Price data from cached EODHD API calls']);
+    pricesData.push([`Note: Price data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
     const pricesSheet = XLSX.utils.aoa_to_sheet(pricesData);
     XLSX.utils.book_append_sheet(wb, pricesSheet, 'Prices');
 
-    // Tab 4: Market Cap - Use actual cached market cap data
+    // Tab 4: Market Cap - Use actual market cap data (from cache or fresh fetch)
     const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
     const marketCapData = [marketCapHeader];
     
-    // Get actual market cap data from cache
+    // Helper function to fetch market cap data
+    async function fetchMarketCapData(ticker: string, date: string) {
+      if (bypass_cache) {
+        // When cache is bypassed, fetch fresh data from EODHD
+        try {
+          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+          if (!EOD_API_KEY) {
+            return null;
+          }
+          
+          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+          
+          // Fetch fundamentals data for market cap
+          const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
+          const fundamentalsResponse = await fetch(fundamentalsUrl);
+          
+          if (!fundamentalsResponse.ok) {
+            return null;
+          }
+          
+          const fundamentalsData = await fundamentalsResponse.json();
+          return fundamentalsData?.Highlights?.MarketCapitalization || null;
+        } catch (error) {
+          console.error(`Error fetching fresh market cap for ${ticker} on ${date}:`, error);
+          return null;
+        }
+      } else {
+        // Use cached data
+        try {
+          const cacheKey = `market-cap:${ticker}:${date}`;
+          const cachedData = await cache.get(cacheKey) as any;
+          return cachedData?.market_cap;
+        } catch (error) {
+          console.error(`Error reading market cap cache for ${ticker} ${date}:`, error);
+          return null;
+        }
+      }
+    }
+    
+    // Get actual market cap data for each ticker and year
     for (const ticker of allTickers) {
       const row = [ticker];
       
       for (const year of years) {
         const dateStr = `${year}-01-02`;
-        const cacheKey = `market-cap:${ticker}:${dateStr}`;
         
-        try {
-          const cachedData = await cache.get(cacheKey) as any;
-          if (cachedData && cachedData.market_cap && cachedData.market_cap > 0) {
-            const marketCapBillions = cachedData.market_cap / 1000000000;
-            row.push(`$${marketCapBillions.toFixed(2)}B`);
+        const marketCap = await fetchMarketCapData(ticker, dateStr);
+        
+        if (marketCap && marketCap > 0) {
+          const marketCapBillions = marketCap / 1000000000;
+          row.push(`$${marketCapBillions.toFixed(2)}B`);
+        } else {
+          // Check if stock didn't exist yet (like ABNB before 2020)
+          if (ticker === 'ABNB' && year < 2020) {
+            row.push('-');
           } else {
-            // Check if stock didn't exist yet (like ABNB before 2020)
-            if (ticker === 'ABNB' && year < 2020) {
-              row.push('-');
-            } else {
-              row.push('N/A');
-            }
+            row.push('N/A');
           }
-        } catch (error) {
-          console.error(`Error reading market cap cache for ${ticker} ${year}:`, error);
-          row.push('Error');
         }
       }
       
       marketCapData.push(row);
     }
     
-    // Add note that data comes from cache
+    // Add note about data source
     marketCapData.push([]);
-    marketCapData.push(['Note: Market cap data from cached EODHD API calls']);
+    marketCapData.push([`Note: Market cap data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
     const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
     XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
 
@@ -236,43 +306,78 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const mcwbSheet = XLSX.utils.aoa_to_sheet(mcwbData);
     XLSX.utils.book_append_sheet(wb, mcwbSheet, 'MCWB');
 
-    // Tab 9: Shares Outstanding - Use actual cached shares data
+    // Tab 9: Shares Outstanding - Use actual shares data (from cache or fresh fetch)
     const sharesHeader = ['Ticker', ...years.map(y => y.toString())];
     const sharesData = [sharesHeader];
     
-    // Get actual shares outstanding data from cache
+    // Helper function to fetch shares outstanding data
+    async function fetchSharesData(ticker: string, date: string) {
+      if (bypass_cache) {
+        // When cache is bypassed, fetch fresh data from EODHD
+        try {
+          const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+          if (!EOD_API_KEY) {
+            return null;
+          }
+          
+          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+          
+          // Fetch fundamentals data for shares outstanding
+          const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
+          const fundamentalsResponse = await fetch(fundamentalsUrl);
+          
+          if (!fundamentalsResponse.ok) {
+            return null;
+          }
+          
+          const fundamentalsData = await fundamentalsResponse.json();
+          return fundamentalsData?.Highlights?.SharesOutstanding || 
+                 fundamentalsData?.SharesStats?.SharesOutstanding || null;
+        } catch (error) {
+          console.error(`Error fetching fresh shares data for ${ticker} on ${date}:`, error);
+          return null;
+        }
+      } else {
+        // Use cached data
+        try {
+          const cacheKey = `market-cap:${ticker}:${date}`;
+          const cachedData = await cache.get(cacheKey) as any;
+          return cachedData?.shares_outstanding;
+        } catch (error) {
+          console.error(`Error reading shares cache for ${ticker} ${date}:`, error);
+          return null;
+        }
+      }
+    }
+    
+    // Get actual shares outstanding data for each ticker and year
     for (const ticker of allTickers) {
       const row = [ticker];
       
       for (const year of years) {
         const dateStr = `${year}-01-02`;
-        const cacheKey = `market-cap:${ticker}:${dateStr}`;
         
-        try {
-          const cachedData = await cache.get(cacheKey) as any;
-          if (cachedData && cachedData.shares_outstanding && cachedData.shares_outstanding > 0) {
-            const sharesBillions = cachedData.shares_outstanding / 1000000000;
-            row.push(`${sharesBillions.toFixed(2)}B`);
+        const shares = await fetchSharesData(ticker, dateStr);
+        
+        if (shares && shares > 0) {
+          const sharesBillions = shares / 1000000000;
+          row.push(`${sharesBillions.toFixed(2)}B`);
+        } else {
+          // Check if stock didn't exist yet (like ABNB before 2020)
+          if (ticker === 'ABNB' && year < 2020) {
+            row.push('-');
           } else {
-            // Check if stock didn't exist yet (like ABNB before 2020)
-            if (ticker === 'ABNB' && year < 2020) {
-              row.push('-');
-            } else {
-              row.push('N/A');
-            }
+            row.push('N/A');
           }
-        } catch (error) {
-          console.error(`Error reading shares cache for ${ticker} ${year}:`, error);
-          row.push('Error');
         }
       }
       
       sharesData.push(row);
     }
     
-    // Add note that data comes from cache
+    // Add note about data source
     sharesData.push([]);
-    sharesData.push(['Note: Shares outstanding data from cached EODHD API calls']);
+    sharesData.push([`Note: Shares outstanding data from ${bypass_cache ? 'fresh EODHD API calls (cache bypassed)' : 'cached EODHD API calls'}`]);
     const sharesSheet = XLSX.utils.aoa_to_sheet(sharesData);
     XLSX.utils.book_append_sheet(wb, sharesSheet, 'Shares Outstanding');
 
