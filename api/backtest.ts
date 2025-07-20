@@ -262,6 +262,97 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
   }
 }
 
+async function calculateRebalancedStrategy(
+  tickers: string[],
+  startYear: number,
+  endYear: number,
+  initialInvestment: number,
+  strategyType: 'equalWeight' | 'marketCap',
+  bypassCache: boolean = false
+): Promise<number> {
+  console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
+  
+  let portfolioValue = initialInvestment;
+  
+  // Simulate year by year
+  for (let year = startYear; year <= endYear; year++) {
+    const yearStart = `${year}-01-02`;
+    const yearEnd = year === endYear ? `${year}-12-31` : `${year+1}-01-02`;
+    
+    // Find which stocks are available this year
+    const availableStocks: string[] = [];
+    const stockPrices: Record<string, { start: number; end: number }> = {};
+    const stockMarketCaps: Record<string, number> = {};
+    
+    for (const ticker of tickers) {
+      const startData = await fetchStockData(ticker, yearStart, bypassCache);
+      const endData = await fetchStockData(ticker, yearEnd, bypassCache);
+      
+      if (startData && endData) {
+        availableStocks.push(ticker);
+        stockPrices[ticker] = {
+          start: startData.adjusted_close,
+          end: endData.adjusted_close
+        };
+        
+        // Get market cap for weighting
+        try {
+          const cacheKey = `market-cap:${ticker}:${yearStart}`;
+          const cachedMarketCap = await cache.get(cacheKey) as any;
+          if (cachedMarketCap && cachedMarketCap.market_cap) {
+            stockMarketCaps[ticker] = cachedMarketCap.market_cap;
+          } else {
+            stockMarketCaps[ticker] = startData.adjusted_close * 1000000000;
+          }
+        } catch (error) {
+          stockMarketCaps[ticker] = startData.adjusted_close * 1000000000;
+        }
+      }
+    }
+    
+    if (availableStocks.length === 0) {
+      console.log(`No stocks available in ${year}, keeping cash`);
+      continue;
+    }
+    
+    // Calculate target allocations
+    const allocations: Record<string, number> = {};
+    
+    if (strategyType === 'equalWeight') {
+      const equalWeight = 1 / availableStocks.length;
+      for (const ticker of availableStocks) {
+        allocations[ticker] = equalWeight;
+      }
+    } else {
+      // Market cap weighted
+      const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+      for (const ticker of availableStocks) {
+        allocations[ticker] = stockMarketCaps[ticker] / totalMarketCap;
+      }
+    }
+    
+    // Calculate portfolio performance for this year
+    let yearEndValue = 0;
+    
+    for (const ticker of availableStocks) {
+      const allocation = allocations[ticker];
+      const investment = portfolioValue * allocation;
+      const stockReturn = (stockPrices[ticker].end - stockPrices[ticker].start) / stockPrices[ticker].start;
+      const stockEndValue = investment * (1 + stockReturn);
+      yearEndValue += stockEndValue;
+      
+      if (year === startYear || availableStocks.length > 1) {
+        console.log(`${year} ${ticker}: ${(allocation * 100).toFixed(1)}% allocation, ${(stockReturn * 100).toFixed(1)}% return`);
+      }
+    }
+    
+    portfolioValue = yearEndValue;
+    console.log(`${year} portfolio value: $${Math.floor(portfolioValue).toLocaleString()}`);
+  }
+  
+  return portfolioValue;
+}
+
 async function calculateStrategy(
   tickers: string[],
   startYear: number,
@@ -324,15 +415,20 @@ async function calculateStrategy(
     // For rebalanced strategies, we'll handle availability year by year
   }
   
-  // For rebalanced strategies, handle stocks that become available over time
-  if (rebalance) {
-    console.log('Rebalanced strategy: will handle stock availability dynamically over time');
-    // For now, implement basic logic with available stocks at start
-    // TODO: Implement year-by-year rebalancing with changing stock universe
-  }
+  // Determine which stocks to use based on strategy type
+  let validTickers: string[];
   
-  // For buy & hold strategies, use only stocks available at both start and end
-  const validTickers = Object.keys(initialPrices);
+  if (rebalance) {
+    // Rebalanced strategies: use any stock that exists at ANY point during the period
+    console.log('Rebalanced strategy: will include stocks that become available during the period');
+    validTickers = tickers.filter(ticker => 
+      tickerAvailability[ticker].hasStart || tickerAvailability[ticker].hasEnd
+    );
+  } else {
+    // Buy & hold strategies: use only stocks available at both start and end
+    console.log('Buy & hold strategy: only using stocks available at start date');
+    validTickers = Object.keys(initialPrices);
+  }
   console.log('Backtest calculation:', { 
     strategy: rebalance ? 'rebalanced' : 'buy-and-hold',
     tickerCount: tickers.length, 
@@ -364,55 +460,53 @@ async function calculateStrategy(
     };
   }
   
-  // Equal weight calculation
-  if (strategyType === 'equalWeight') {
-    const perStockInvestment = initialInvestment / validTickers.length;
-    let totalEndValue = 0;
-    
-    for (const ticker of validTickers) {
-      const startPrice = initialPrices[ticker];
-      const endPrice = finalPrices[ticker];
-      const stockReturn = (endPrice - startPrice) / startPrice;
-      const stockEndValue = perStockInvestment * (1 + stockReturn);
-      totalEndValue += stockEndValue;
-    }
-    
-    currentValue = totalEndValue;
-  } else {
-    // Market cap weighted calculation using actual market cap data
-    let totalMarketCap = 0;
-    
-    for (const ticker of validTickers) {
-      totalMarketCap += initialMarketCaps[ticker];
-    }
-    
-    let totalEndValue = 0;
-    
-    for (const ticker of validTickers) {
-      const weight = initialMarketCaps[ticker] / totalMarketCap;
-      const stockInvestment = initialInvestment * weight;
-      const startPrice = initialPrices[ticker];
-      const endPrice = finalPrices[ticker];
-      const stockReturn = (endPrice - startPrice) / startPrice;
-      const stockEndValue = stockInvestment * (1 + stockReturn);
-      totalEndValue += stockEndValue;
-      
-      console.log(`${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B, weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
-    }
-    
-    currentValue = totalEndValue;
-  }
-  
-  // Rebalancing should not artificially change returns
-  // In real life, rebalancing may have slight transaction costs or timing benefits
-  // For now, we'll not apply any artificial adjustments
   if (rebalance) {
-    console.log(`Rebalanced ${strategyType} strategy - no artificial adjustments applied`);
-    // In a real implementation, we would:
-    // 1. Track portfolio values year by year
-    // 2. Rebalance annually to target weights
-    // 3. Account for any new stocks added or removed
-    // 4. Calculate actual returns based on rebalanced positions
+    // REBALANCED STRATEGY: Year-by-year simulation with dynamic stock addition
+    console.log(`Starting ${strategyType} rebalanced strategy simulation`);
+    currentValue = await calculateRebalancedStrategy(
+      tickers, startYear, endYear, initialInvestment, strategyType, bypassCache
+    );
+  } else {
+    // BUY & HOLD STRATEGY: Simple start-to-end calculation
+    console.log(`Starting ${strategyType} buy & hold strategy calculation`);
+    
+    if (strategyType === 'equalWeight') {
+      const perStockInvestment = initialInvestment / validTickers.length;
+      let totalEndValue = 0;
+      
+      for (const ticker of validTickers) {
+        const startPrice = initialPrices[ticker];
+        const endPrice = finalPrices[ticker];
+        const stockReturn = (endPrice - startPrice) / startPrice;
+        const stockEndValue = perStockInvestment * (1 + stockReturn);
+        totalEndValue += stockEndValue;
+      }
+      
+      currentValue = totalEndValue;
+    } else {
+      // Market cap weighted calculation using actual market cap data
+      let totalMarketCap = 0;
+      
+      for (const ticker of validTickers) {
+        totalMarketCap += initialMarketCaps[ticker];
+      }
+      
+      let totalEndValue = 0;
+      
+      for (const ticker of validTickers) {
+        const weight = initialMarketCaps[ticker] / totalMarketCap;
+        const stockInvestment = initialInvestment * weight;
+        const startPrice = initialPrices[ticker];
+        const endPrice = finalPrices[ticker];
+        const stockReturn = (endPrice - startPrice) / startPrice;
+        const stockEndValue = stockInvestment * (1 + stockReturn);
+        totalEndValue += stockEndValue;
+        
+        console.log(`${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B, weight: ${(weight * 100).toFixed(1)}%, investment: $${stockInvestment.toFixed(0)}`);
+      }
+      
+      currentValue = totalEndValue;
+    }
   }
   
   // Calculate returns
