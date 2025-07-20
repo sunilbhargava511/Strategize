@@ -47,7 +47,36 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     });
     
     if (!data || (Array.isArray(data) && data.length === 0)) {
-      console.error(`No EODHD data found for ${tickerWithExchange} on ${date}`);
+      console.log(`No data for ${tickerWithExchange} on ${date}, trying fallback dates...`);
+      
+      // Try next 5 business days as fallback (for holidays/weekends)
+      for (let i = 1; i <= 5; i++) {
+        const fallbackDate = new Date(date);
+        fallbackDate.setDate(fallbackDate.getDate() + i);
+        const fallbackDateStr = fallbackDate.toISOString().split('T')[0];
+        
+        const fallbackUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${fallbackDateStr}&to=${fallbackDateStr}&api_token=${EOD_API_KEY}&fmt=json`;
+        console.log(`Trying fallback date: ${fallbackDateStr}`);
+        
+        const fallbackResponse = await fetch(fallbackUrl);
+        if (fallbackResponse.ok) {
+          const fallbackData = await fallbackResponse.json();
+          if (fallbackData && Array.isArray(fallbackData) && fallbackData.length > 0) {
+            console.log(`Found data on fallback date ${fallbackDateStr} for ${tickerWithExchange}`);
+            const dayData = fallbackData[0];
+            if (dayData && dayData.adjusted_close) {
+              return {
+                ticker: ticker,
+                date: dayData.date,
+                price: dayData.adjusted_close || dayData.close,
+                adjusted_close: dayData.adjusted_close || dayData.close
+              };
+            }
+          }
+        }
+      }
+      
+      console.error(`No EODHD data found for ${tickerWithExchange} on ${date} or fallback dates`);
       return null;
     }
     
