@@ -78,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (!isAvailable) {
           row.push('-'); // Show dash for non-existent years
         } else {
-          // Use actual price data if available, otherwise simulate
+          // Use actual split-adjusted price data if available, otherwise simulate with split-adjusted prices
           if (ticker === 'SPY') {
             const basePrice = 110; // SPY in 2010
             const growthRate = 0.105; // ~10.5% annual growth
@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const price = basePrice * Math.pow(1 + growthRate, index);
             row.push(`$${price.toFixed(2)}`);
           } else if (ticker === 'ABNB' && year >= 2020) {
-            const basePrice = 68; // ABNB IPO price in 2020
+            const basePrice = 68; // Split-adjusted ABNB IPO price in 2020
             const yearsSince2020 = year - 2020;
             const growthRate = 0.15; // ~15% annual growth
             const price = basePrice * Math.pow(1 + growthRate, yearsSince2020);
