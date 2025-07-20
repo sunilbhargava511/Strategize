@@ -291,8 +291,8 @@ async function calculateStrategy(
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
   for (const ticker of tickers) {
-    const startData = await fetchMarketCapData(ticker, startDate, bypassCache);
-    const endData = await fetchMarketCapData(ticker, endDate, bypassCache);
+    const startData = await fetchStockData(ticker, startDate, bypassCache);
+    const endData = await fetchStockData(ticker, endDate, bypassCache);
     
     tickerAvailability[ticker] = {
       hasStart: !!startData,
@@ -303,14 +303,22 @@ async function calculateStrategy(
     if (startData && endData) {
       initialPrices[ticker] = startData.adjusted_close;
       finalPrices[ticker] = endData.adjusted_close;
-      // Store market cap if available, otherwise calculate from price * shares
-      if (startData.market_cap) {
-        initialMarketCaps[ticker] = startData.market_cap;
-      } else if (startData.shares_outstanding) {
-        initialMarketCaps[ticker] = startData.adjusted_close * startData.shares_outstanding;
-      } else {
-        // Fallback: use price as proxy with large multiplier
-        initialMarketCaps[ticker] = startData.adjusted_close * 1000000000; // Assume 1B shares as default
+      
+      // Try to get market cap from cache first
+      try {
+        const cacheKey = `market-cap:${ticker}:${startDate}`;
+        const cachedMarketCap = await cache.get(cacheKey) as any;
+        if (cachedMarketCap && cachedMarketCap.market_cap) {
+          initialMarketCaps[ticker] = cachedMarketCap.market_cap;
+          console.log(`Using cached market cap for ${ticker}: $${(cachedMarketCap.market_cap / 1000000000).toFixed(2)}B`);
+        } else {
+          // Fallback: use price as proxy (simplified but working approach)
+          initialMarketCaps[ticker] = startData.adjusted_close * 1000000000; // 1B shares estimate
+          console.log(`Using price proxy for ${ticker} market cap: $${(initialMarketCaps[ticker] / 1000000000).toFixed(2)}B`);
+        }
+      } catch (error) {
+        console.error(`Error getting market cap for ${ticker}, using price proxy:`, error);
+        initialMarketCaps[ticker] = startData.adjusted_close * 1000000000;
       }
     }
     // For rebalanced strategies, we'll handle availability year by year
