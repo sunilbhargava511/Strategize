@@ -132,7 +132,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
             className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <span>✅</span>
             <div className="text-left">
-              <div className="font-medium">Excel Report (.csv)</div>
+              <div className="font-medium">Excel Report (.xlsx)</div>
               <div className="text-sm text-gray-600">Download results in Excel-compatible format</div>
             </div>
           </button>

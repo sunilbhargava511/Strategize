@@ -78,7 +78,16 @@ async function calculateStrategy(
   
   // Calculate returns (simplified - not handling yearly rebalancing yet)
   const validTickers = Object.keys(initialPrices);
+  console.log('Backtest calculation:', { 
+    tickerCount: tickers.length, 
+    validTickerCount: validTickers.length,
+    validTickers: validTickers.slice(0, 3),
+    initialPrices: Object.fromEntries(Object.entries(initialPrices).slice(0, 3)),
+    finalPrices: Object.fromEntries(Object.entries(finalPrices).slice(0, 3))
+  });
+  
   if (validTickers.length === 0) {
+    console.log('No valid tickers found, returning zero results');
     return {
       totalReturn: 0,
       annualizedReturn: 0,
