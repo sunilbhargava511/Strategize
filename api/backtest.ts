@@ -30,10 +30,20 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     }
     
     const data = await response.json();
-    console.log(`Data for ${ticker} on ${date}:`, { price: data.adjusted_close || data.price, from_cache: data.from_cache });
+    console.log(`Data for ${ticker} on ${date}:`, { 
+      price: data.adjusted_close || data.price, 
+      from_cache: data.from_cache,
+      raw_response: data
+    });
+    
+    // Check if we got valid price data
+    if (!data.adjusted_close && !data.price) {
+      console.error(`No price data found for ${ticker} on ${date}:`, data);
+      return null;
+    }
     
     return {
-      ticker: data.ticker,
+      ticker: ticker, // Use original ticker, not the .US version
       date: data.date,
       price: data.adjusted_close || data.price,
       adjusted_close: data.adjusted_close || data.price
@@ -87,7 +97,11 @@ async function calculateStrategy(
     validTickerCount: validTickers.length,
     validTickers: validTickers.slice(0, 3),
     initialPrices: Object.fromEntries(Object.entries(initialPrices).slice(0, 3)),
-    finalPrices: Object.fromEntries(Object.entries(finalPrices).slice(0, 3))
+    finalPrices: Object.fromEntries(Object.entries(finalPrices).slice(0, 3)),
+    startDate,
+    endDate,
+    strategyType,
+    rebalance
   });
   
   if (validTickers.length === 0) {
@@ -261,6 +275,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         initialInvestment,
         tickerCount: tickers.length,
         tickers: tickers.slice(0, 10)
+      },
+      debug: {
+        equalWeightResult: equalWeightBuyHold.finalValue,
+        marketCapResult: marketCapBuyHold.finalValue,
+        equalWeightRebalancedResult: equalWeightRebalanced.finalValue,
+        marketCapRebalancedResult: marketCapRebalanced.finalValue
       },
       message: tickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
