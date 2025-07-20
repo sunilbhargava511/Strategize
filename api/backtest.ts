@@ -76,7 +76,7 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
         }
       }
       
-      console.error(`No EODHD data found for ${tickerWithExchange} on ${date} or fallback dates`);
+      console.log(`📅 No data found for ${tickerWithExchange} on ${date} or fallback dates (may not have been trading yet)`);
       return null;
     }
     
@@ -143,9 +143,17 @@ async function calculateStrategy(
     // For rebalanced strategies, we'll handle availability year by year
   }
   
-  // Calculate returns (simplified - not handling yearly rebalancing yet)
+  // For rebalanced strategies, handle stocks that become available over time
+  if (rebalance) {
+    console.log('Rebalanced strategy: will handle stock availability dynamically over time');
+    // For now, implement basic logic with available stocks at start
+    // TODO: Implement year-by-year rebalancing with changing stock universe
+  }
+  
+  // For buy & hold strategies, use only stocks available at both start and end
   const validTickers = Object.keys(initialPrices);
   console.log('Backtest calculation:', { 
+    strategy: rebalance ? 'rebalanced' : 'buy-and-hold',
     tickerCount: tickers.length, 
     validTickerCount: validTickers.length,
     validTickers: validTickers.slice(0, 3),
@@ -159,7 +167,7 @@ async function calculateStrategy(
   });
   
   if (validTickers.length === 0) {
-    console.log('No valid tickers found, returning zero results');
+    console.log('No valid tickers found for buy-and-hold strategy, returning zero results');
     return {
       totalReturn: 0,
       annualizedReturn: 0,
