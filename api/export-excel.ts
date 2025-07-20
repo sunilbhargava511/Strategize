@@ -1,6 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as XLSX from 'xlsx';
 
+import { cache } from './_upstashCache';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -64,23 +66,82 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
     XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Portfolio');
 
-    // Tab 3: Prices - Use actual backtest results (no simulation)
+    // Tab 3: Prices - Use actual cached price data
     const pricesHeader = ['Year', ...years.map(y => y.toString())];
     const pricesData = [pricesHeader];
     
-    // Add note that price data comes from actual backtest results
-    pricesData.push(['Note: Price data from actual EODHD API calls']);
+    // Get actual price data from cache for each ticker and year
+    const allTickers = ['SPY', ...tickers];
+    
+    for (const ticker of allTickers) {
+      const row = [ticker];
+      
+      for (const year of years) {
+        const dateStr = `${year}-01-02`;
+        const cacheKey = `market-cap:${ticker}:${dateStr}`;
+        
+        try {
+          const cachedData = await cache.get(cacheKey) as any;
+          if (cachedData && cachedData.adjusted_close) {
+            row.push(`$${cachedData.adjusted_close.toFixed(2)}`);
+          } else {
+            // Check if stock didn't exist yet (like ABNB before 2020)
+            if (ticker === 'ABNB' && year < 2020) {
+              row.push('-');
+            } else {
+              row.push('N/A');
+            }
+          }
+        } catch (error) {
+          row.push('Error');
+        }
+      }
+      
+      pricesData.push(row);
+    }
+    
+    // Add note that data comes from cache
     pricesData.push([]);
+    pricesData.push(['Note: Price data from cached EODHD API calls']);
     const pricesSheet = XLSX.utils.aoa_to_sheet(pricesData);
     XLSX.utils.book_append_sheet(wb, pricesSheet, 'Prices');
 
-    // Tab 4: Market Cap - Use actual backtest results (no simulation)
+    // Tab 4: Market Cap - Use actual cached market cap data
     const marketCapHeader = ['Ticker', ...years.map(y => y.toString())];
     const marketCapData = [marketCapHeader];
     
-    // Add note that market cap data comes from actual backtest results  
-    marketCapData.push(['Note: Market cap data from actual EODHD API calls']);
+    // Get actual market cap data from cache
+    for (const ticker of tickers) {
+      const row = [ticker];
+      
+      for (const year of years) {
+        const dateStr = `${year}-01-02`;
+        const cacheKey = `market-cap:${ticker}:${dateStr}`;
+        
+        try {
+          const cachedData = await cache.get(cacheKey) as any;
+          if (cachedData && cachedData.market_cap) {
+            const marketCapBillions = cachedData.market_cap / 1000000000;
+            row.push(`$${marketCapBillions.toFixed(2)}B`);
+          } else {
+            // Check if stock didn't exist yet (like ABNB before 2020)
+            if (ticker === 'ABNB' && year < 2020) {
+              row.push('-');
+            } else {
+              row.push('N/A');
+            }
+          }
+        } catch (error) {
+          row.push('Error');
+        }
+      }
+      
+      marketCapData.push(row);
+    }
+    
+    // Add note that data comes from cache
     marketCapData.push([]);
+    marketCapData.push(['Note: Market cap data from cached EODHD API calls']);
     const marketCapSheet = XLSX.utils.aoa_to_sheet(marketCapData);
     XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
 
@@ -116,7 +177,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       simData.push([`Annualized Return: ${strategyResult.annualizedReturn?.toFixed(2) || 0}%`]);
       simData.push([`Final Value: $${Math.floor(finalValue).toLocaleString()}`]);
       simData.push([]);
-      simData.push(['Note: Data from actual EODHD API results']);
+      simData.push(['Note: Data from cached EODHD API results']);
       
       return simData;
     };

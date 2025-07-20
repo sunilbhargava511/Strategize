@@ -146,10 +146,29 @@ async function fetchMarketCapData(ticker: string, date: string, bypassCache: boo
 
 async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
   try {
+    // Check cache first unless bypassed
+    const cacheKey = `market-cap:${ticker}:${date}`;
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached) {
+        console.log(`Cache hit for ${ticker} on ${date}`);
+        return {
+          ticker: ticker,
+          date: cached.date || date,
+          price: cached.adjusted_close || cached.price,
+          adjusted_close: cached.adjusted_close || cached.price,
+          market_cap: cached.market_cap,
+          shares_outstanding: cached.shares_outstanding
+        };
+      }
+    }
+    
+    console.log(`Cache miss for ${ticker} on ${date}, fetching from EODHD`);
+    
     // Add .US exchange suffix if not present
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
     
-    // Call EODHD API directly to avoid internal API routing issues
+    // Call EODHD API to populate cache
     const EOD_API_KEY = process.env.EODHD_API_TOKEN;
     if (!EOD_API_KEY) {
       console.error('EODHD_API_TOKEN not configured');
@@ -200,12 +219,32 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
             console.log(`Found data on fallback date ${fallbackDateStr} for ${tickerWithExchange}`);
             const dayData = fallbackData[0];
             if (dayData && dayData.adjusted_close) {
-              return {
+              const result = {
                 ticker: ticker,
                 date: dayData.date,
                 price: dayData.adjusted_close || dayData.close,
                 adjusted_close: dayData.adjusted_close || dayData.close
               };
+              
+              // Cache the fallback data too
+              if (!bypassCache) {
+                try {
+                  await cache.set(cacheKey, {
+                    ...result,
+                    open: dayData.open,
+                    high: dayData.high,
+                    low: dayData.low,
+                    volume: dayData.volume,
+                    market_cap: 0,
+                    shares_outstanding: 0
+                  });
+                  console.log(`Cached fallback price data for ${ticker} on ${fallbackDateStr}`);
+                } catch (error) {
+                  console.warn('Failed to cache fallback data:', error);
+                }
+              }
+              
+              return result;
             }
           }
         }
@@ -222,12 +261,32 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
       return null;
     }
     
-    return {
+    const result = {
       ticker: ticker, // Return original ticker without exchange suffix for consistency
       date: dayData.date,
       price: dayData.adjusted_close || dayData.close,
       adjusted_close: dayData.adjusted_close || dayData.close
     };
+    
+    // Store in cache for future use (permanent cache for historical data)
+    if (!bypassCache) {
+      try {
+        await cache.set(cacheKey, {
+          ...result,
+          open: dayData.open,
+          high: dayData.high,
+          low: dayData.low,
+          volume: dayData.volume,
+          market_cap: 0, // Will be populated by fetchMarketCapData if needed
+          shares_outstanding: 0
+        });
+        console.log(`Cached price data for ${ticker} on ${date}`);
+      } catch (error) {
+        console.warn('Failed to cache price data:', error);
+      }
+    }
+    
+    return result;
   } catch (error) {
     console.error(`Error fetching ${ticker} on ${date}:`, error);
     
