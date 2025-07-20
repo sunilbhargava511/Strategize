@@ -21,9 +21,16 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     // Add .US exchange suffix if not present
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
     
-    // Use our existing market-cap API endpoint
-    const bypassParam = bypassCache ? '&bypass_cache=true' : '';
-    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap?ticker=${tickerWithExchange}&date=${date}${bypassParam}`);
+    // Use our existing market-cap API endpoint with POST method
+    const response = await fetch(`${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/api/market-cap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker: tickerWithExchange,
+        date: date,
+        bypass_cache: bypassCache
+      })
+    });
     
     console.log(`Fetching data for ${tickerWithExchange} on ${date}, response status: ${response.status}`);
     
