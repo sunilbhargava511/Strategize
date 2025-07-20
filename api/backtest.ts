@@ -21,52 +21,48 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     // Add .US exchange suffix if not present
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
     
-    // Use our existing market-cap API endpoint with POST method
-    // For Vercel, we need to construct the full URL for internal API calls
-    const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000';
-    console.log(`Calling internal API: ${baseUrl}/api/market-cap`);
-    const response = await fetch(`${baseUrl}/api/market-cap`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ticker: tickerWithExchange,
-        date: date,
-        bypass_cache: bypassCache
-      })
-    });
+    // Call EODHD API directly to avoid internal API routing issues
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured');
+      return null;
+    }
     
-    console.log(`Fetching data for ${tickerWithExchange} on ${date}, response status: ${response.status}`);
+    const priceUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
+    console.log(`Calling EODHD API directly: ${priceUrl.replace(EOD_API_KEY, 'XXXXX')}`);
+    
+    const response = await fetch(priceUrl);
+    console.log(`EODHD response for ${tickerWithExchange} on ${date}, status: ${response.status}`);
     
     if (!response.ok) {
-      console.error(`Failed to fetch data for ${tickerWithExchange} on ${date}, status: ${response.status}`);
+      console.error(`EODHD API error for ${tickerWithExchange} on ${date}, status: ${response.status}`);
       return null;
     }
     
     const data = await response.json();
-    console.log(`Data for ${tickerWithExchange} on ${date}:`, { 
-      adjusted_close: data.adjusted_close,
-      price: data.price, 
-      from_cache: data.from_cache,
-      error: data.error
+    console.log(`EODHD data for ${tickerWithExchange} on ${date}:`, { 
+      dataLength: Array.isArray(data) ? data.length : 'not array',
+      hasData: !!data,
+      firstItem: Array.isArray(data) && data.length > 0 ? data[0] : data
     });
     
-    // Check for API errors (like defunct tickers)
-    if (data.error) {
-      console.error(`API error for ${tickerWithExchange} on ${date}:`, data.error);
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      console.error(`No EODHD data found for ${tickerWithExchange} on ${date}`);
       return null;
     }
     
-    // Check if we got valid adjusted price data (prioritize adjusted_close for splits)
-    if (!data.adjusted_close && !data.price) {
-      console.error(`No price data found for ${tickerWithExchange} on ${date}:`, data);
+    const dayData = Array.isArray(data) ? data[0] : data;
+    
+    if (!dayData || !dayData.adjusted_close) {
+      console.error(`Invalid EODHD data for ${tickerWithExchange} on ${date}:`, dayData);
       return null;
     }
     
     return {
       ticker: ticker, // Return original ticker without exchange suffix for consistency
-      date: data.date,
-      price: data.adjusted_close || data.price, // Prefer adjusted_close for split handling
-      adjusted_close: data.adjusted_close || data.price
+      date: dayData.date,
+      price: dayData.adjusted_close || dayData.close,
+      adjusted_close: dayData.adjusted_close || dayData.close
     };
   } catch (error) {
     console.error(`Error fetching ${ticker} on ${date}:`, error);
