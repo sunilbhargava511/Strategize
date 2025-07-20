@@ -211,6 +211,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message: 'Note: EODHD API token not configured. Using simulated data.'
       };
       
+      // Don't cache mock data forever - use 1 hour
       await cache.set(cacheKey, results, 3600);
       return res.status(200).json(results);
     }
@@ -242,8 +243,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Calculations based on real EODHD market data.'
     };
 
-    // Cache results for 1 hour
-    await cache.set(cacheKey, results, 3600);
+    // Cache forever if end year is in the past, otherwise cache for 1 day
+    const currentYear = new Date().getFullYear();
+    const cacheTime = endYear < currentYear ? undefined : 86400;
+    await cache.set(cacheKey, results, cacheTime);
 
     res.status(200).json(results);
   } catch (error: any) {

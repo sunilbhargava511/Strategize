@@ -81,8 +81,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       adjusted_close: dayData.adjusted_close
     };
 
-    // Cache for 24 hours
-    await cache.set(cacheKey, result, 86400);
+    // Cache forever - historical data doesn't change
+    await cache.set(cacheKey, result);
 
     res.status(200).json(result);
   } catch (error: any) {

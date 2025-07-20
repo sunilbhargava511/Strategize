@@ -22,10 +22,15 @@ export const cache = {
     }
   },
   
-  set: async (key: string, value: any, expirationInSeconds: number = 86400): Promise<boolean> => {
+  set: async (key: string, value: any, expirationInSeconds?: number): Promise<boolean> => {
     if (!redis) return false;
     try {
-      await redis.set(key, value, { ex: expirationInSeconds });
+      if (expirationInSeconds) {
+        await redis.set(key, value, { ex: expirationInSeconds });
+      } else {
+        // No expiration - cache forever
+        await redis.set(key, value);
+      }
       return true;
     } catch (error) {
       console.error('Cache set error:', error);
