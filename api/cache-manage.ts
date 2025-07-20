@@ -106,10 +106,10 @@ async function getCacheKeys(redis: Redis, pattern: string = '*', res: VercelResp
 
 async function clearCachePattern(redis: Redis, pattern: string, res: VercelResponse) {
   try {
-    if (!pattern || pattern === '*') {
+    if (!pattern) {
       return res.status(400).json({ 
         error: 'Pattern required', 
-        message: 'Specify a pattern like "market-cap:*" or "backtest:*" to clear specific data'
+        message: 'Specify a pattern like "market-cap:*", "backtest:*", or "*" to clear data'
       });
     }
     
@@ -146,5 +146,5 @@ async function clearCachePattern(redis: Redis, pattern: string, res: VercelRespo
 
 async function handleCacheClear(redis: Redis, pattern: string, res: VercelResponse) {
   // DELETE method for clearing cache
-  return await clearCachePattern(redis, pattern || '*', res);
+  return await clearCachePattern(redis, pattern || 'market-cap:*', res);
 }
