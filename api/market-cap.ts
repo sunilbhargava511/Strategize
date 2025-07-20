@@ -18,9 +18,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    console.log('=== MARKET-CAP API CALLED ===');
+    console.log('Request method:', req.method);
+    console.log('Request body:', req.body);
+    
     const { ticker, date, bypass_cache } = req.body;
 
     if (!ticker) {
+      console.log('❌ Missing ticker parameter');
       return res.status(400).json({ error: 'Ticker parameter is required' });
     }
 
