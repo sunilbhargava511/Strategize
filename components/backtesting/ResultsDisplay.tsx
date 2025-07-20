@@ -154,7 +154,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                         }
                       })
                       return Array.from(allYears).sort().map(year => (
-                        <th key={year} className="text-center p-2">Price / MCap (B)</th>
+                        <th key={year} className="text-center p-2">Price / MCap (B) / Shares Out.</th>
                       ))
                     })()}
                   </tr>
@@ -207,6 +207,10 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                                     {/* Show market cap in billions */}
                                     {priceData.marketCap ? `$${(priceData.marketCap / 1000000000).toFixed(1)}B` : '—'}
                                   </div>
+                                  <div className="text-gray-500 text-xs">
+                                    {/* Show shares outstanding in millions */}
+                                    {priceData.sharesOutstanding ? `${(priceData.sharesOutstanding / 1000000).toFixed(0)}M` : '—'}
+                                  </div>
                                 </div>
                               ) : (
                                 <div className="text-gray-400">—</div>
@@ -221,7 +225,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
               </table>
             </div>
             <div className="mt-3 text-xs text-gray-500">
-              Price and market cap data from historical records. Market caps may be estimated if actual data unavailable.
+              Price, market cap, and shares outstanding data from historical records. Shows: Stock Price / Market Cap (Billions) / Shares Outstanding (Millions).
             </div>
           </div>
         </div>

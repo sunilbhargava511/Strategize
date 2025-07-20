@@ -16,7 +16,7 @@ interface StrategyResult {
   annualizedReturn: number;
   finalValue: number;
   yearlyValues: Record<number, number>;
-  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>>;
+  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>;
   portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }>;
 }
 
@@ -709,11 +709,11 @@ async function calculateRebalancedStrategy(
   strategyType: 'equalWeight' | 'marketCap',
   bypassCache: boolean = false,
   historicalData?: Record<string, Record<string, any>>
-): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>>; yearlyValues: Record<number, number>; }> {
+): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>; yearlyValues: Record<number, number>; }> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
   let portfolioValue = initialInvestment;
-  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>> = {};
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>> = {};
   const yearlyValues: Record<number, number> = {};
   
   // Simulate year by year
@@ -807,12 +807,16 @@ async function calculateRebalancedStrategy(
       yearEndValue += stockEndValue;
       
       // Store holdings data
+      // Calculate shares outstanding from market cap and price  
+      const sharesOutstanding = stockMarketCaps[ticker] ? Math.round(stockMarketCaps[ticker] / stockPrices[ticker].start) : undefined;
+      
       yearlyHoldings[year][ticker] = {
         weight: allocation,
         shares: shares,
         value: stockEndValue,
         price: stockPrices[ticker].start,
-        marketCap: stockMarketCaps[ticker]
+        marketCap: stockMarketCaps[ticker],
+        sharesOutstanding: sharesOutstanding
       };
       
       if (year === startYear || availableStocks.length > 1) {
@@ -843,7 +847,7 @@ async function calculateStrategy(
   const successfulMarketCapData: Array<{ticker: string, year: number, marketCap: number}> = [];
   
   const yearlyValues: Record<number, number> = {};
-  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>> = {};
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>> = {};
   const portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }> = {};
   let currentValue = initialInvestment;
   
@@ -1164,12 +1168,16 @@ async function calculateStrategy(
           const currentValue = holding.shares * currentPrice;
           totalPortfolioValue += currentValue;
           
+          // Calculate shares outstanding from market cap and price
+          const sharesOutstanding = stockMarketCaps[ticker] && currentPrice ? Math.round(stockMarketCaps[ticker] / currentPrice) : undefined;
+          
           yearlyHoldings[year][ticker] = {
             weight: 0, // Will be calculated below
             shares: holding.shares,
             value: currentValue,
             price: currentPrice,
-            marketCap: stockMarketCaps[ticker]
+            marketCap: stockMarketCaps[ticker],
+            sharesOutstanding: sharesOutstanding
           };
         }
       }
