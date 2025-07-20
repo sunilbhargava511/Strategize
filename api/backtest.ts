@@ -766,7 +766,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
       tickers: Object.keys(historicalData),
-      totalDataPoints: Object.values(historicalData).reduce((sum, dates) => sum + Object.keys(dates).length, 0),
+      totalDataPoints: Object.values(historicalData).reduce((sum: number, dates: any) => sum + Object.keys(dates).length, 0),
       sampleData: Object.keys(historicalData).slice(0, 2).map(ticker => ({
         ticker,
         dates: Object.keys(historicalData[ticker]).slice(0, 3)
