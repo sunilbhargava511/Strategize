@@ -604,13 +604,39 @@ async function calculateStrategy(
               const marketCapData = await fetchMarketCapData(ticker, yearStart, bypassCache);
               if (marketCapData && marketCapData.market_cap) {
                 stockMarketCaps[ticker] = marketCapData.market_cap;
+                console.log(`  Fetched market cap for ${ticker}: $${(marketCapData.market_cap / 1000000000).toFixed(2)}B`);
               } else {
-                // Fallback: estimate based on price
-                stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
+                // Better fallback: use different multipliers based on ticker to avoid equal weights
+                // This is a rough approximation when real data is unavailable
+                const fallbackMultipliers: Record<string, number> = {
+                  'AAPL': 2500000000,  // Apple typically larger
+                  'MSFT': 2000000000,  // Microsoft large
+                  'GOOGL': 1500000000, // Google large
+                  'AMZN': 1300000000,  // Amazon large
+                  'META': 800000000,   // Meta medium-large
+                  'NVDA': 1000000000,  // Nvidia (varies by year)
+                  'TSLA': 600000000,   // Tesla (varies significantly)
+                  'AVGO': 400000000,   // Broadcom smaller than big tech
+                  'JPM': 400000000,    // JPMorgan
+                  'V': 350000000,      // Visa
+                  'MA': 300000000,     // Mastercard
+                };
+                const multiplier = fallbackMultipliers[ticker] || 500000000; // Default 500M shares
+                stockMarketCaps[ticker] = yearData.adjusted_close * multiplier;
+                console.log(`  WARNING: Using fallback market cap for ${ticker}: $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B (price: $${yearData.adjusted_close.toFixed(2)} × ${(multiplier/1000000).toFixed(0)}M shares)`);
               }
             }
           } catch (error) {
-            stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
+            // Use same fallback logic as above
+            const fallbackMultipliers: Record<string, number> = {
+              'AAPL': 2500000000, 'MSFT': 2000000000, 'GOOGL': 1500000000,
+              'AMZN': 1300000000, 'META': 800000000, 'NVDA': 1000000000,
+              'TSLA': 600000000, 'AVGO': 400000000, 'JPM': 400000000,
+              'V': 350000000, 'MA': 300000000
+            };
+            const multiplier = fallbackMultipliers[ticker] || 500000000;
+            stockMarketCaps[ticker] = yearData.adjusted_close * multiplier;
+            console.log(`  ERROR fetching market cap for ${ticker}, using fallback: $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B`);
           }
         }
       }
