@@ -16,7 +16,7 @@ interface StrategyResult {
   annualizedReturn: number;
   finalValue: number;
   yearlyValues: Record<number, number>;
-  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>>;
+  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>>;
   portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }>;
 }
 
@@ -347,11 +347,11 @@ async function calculateRebalancedStrategy(
   strategyType: 'equalWeight' | 'marketCap',
   bypassCache: boolean = false,
   historicalData?: Record<string, Record<string, any>>
-): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>>; yearlyValues: Record<number, number>; }> {
+): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>>; yearlyValues: Record<number, number>; }> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
   let portfolioValue = initialInvestment;
-  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>> = {};
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>> = {};
   const yearlyValues: Record<number, number> = {};
   
   // Simulate year by year
@@ -428,7 +428,8 @@ async function calculateRebalancedStrategy(
         weight: allocation,
         shares: shares,
         value: stockEndValue,
-        price: stockPrices[ticker].start
+        price: stockPrices[ticker].start,
+        marketCap: stockMarketCaps[ticker]
       };
       
       if (year === startYear || availableStocks.length > 1) {
@@ -455,7 +456,7 @@ async function calculateStrategy(
   historicalData?: Record<string, Record<string, any>>
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
-  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; }>> = {};
+  const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; }>> = {};
   const portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }> = {};
   let currentValue = initialInvestment;
   
@@ -778,7 +779,8 @@ async function calculateStrategy(
             weight: 0, // Will be calculated below
             shares: holding.shares,
             value: currentValue,
-            price: currentPrice
+            price: currentPrice,
+            marketCap: stockMarketCaps[ticker]
           };
         }
       }

@@ -120,51 +120,110 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
           </div>
         </div>
 
-        {/* Strategy Holdings Comparison */}
+        {/* Price and Market Cap History */}
         <div className="space-y-4">
-          <h4 className="font-semibold text-gray-900">Holdings by Strategy</h4>
-          {strategies.map(strategy => {
-            const data = results[strategy.key]
-            if (!data?.yearlyHoldings) return null
-
-            const firstYear = Math.min(...Object.keys(data.yearlyHoldings).map(Number))
-            const firstYearHoldings = data.yearlyHoldings[firstYear]
-            
-            return (
-              <div key={strategy.key} className="border rounded-lg p-4">
-                <div className="flex items-center space-x-2 mb-3">
-                  <span className="text-lg">{strategy.icon}</span>
-                  <h5 className="font-medium">{strategy.name}</h5>
-                </div>
-                {firstYearHoldings && Object.keys(firstYearHoldings).length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="text-left p-2">Ticker</th>
-                          <th className="text-right p-2">Weight</th>
-                          <th className="text-right p-2">Shares</th>
-                          <th className="text-right p-2">Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(firstYearHoldings).map(([ticker, holding]: [string, any]) => (
-                          <tr key={ticker} className="border-b">
-                            <td className="p-2 font-mono font-medium">{ticker}</td>
-                            <td className="p-2 text-right">{(holding.weight * 100).toFixed(1)}%</td>
-                            <td className="p-2 text-right">{holding.shares.toFixed(0)}</td>
-                            <td className="p-2 text-right">{formatCurrency(holding.value)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">No holdings data available</p>
-                )}
-              </div>
-            )
-          })}
+          <h4 className="font-semibold text-gray-900">Historical Price & Market Cap Data</h4>
+          <div className="bg-white border rounded-lg p-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b-2 border-gray-300">
+                    <th className="text-left p-3 font-semibold">Ticker</th>
+                    {(() => {
+                      // Get all years from any strategy's holdings
+                      const allYears = new Set<number>()
+                      strategies.forEach(strategy => {
+                        const data = results[strategy.key]
+                        if (data?.yearlyHoldings) {
+                          Object.keys(data.yearlyHoldings).forEach(year => allYears.add(Number(year)))
+                        }
+                      })
+                      return Array.from(allYears).sort().map(year => (
+                        <th key={year} className="text-center p-3 font-semibold">{year}</th>
+                      ))
+                    })()}
+                  </tr>
+                  <tr className="border-b border-gray-200 text-xs text-gray-600">
+                    <th className="text-left p-2">Price / Market Cap</th>
+                    {(() => {
+                      const allYears = new Set<number>()
+                      strategies.forEach(strategy => {
+                        const data = results[strategy.key]
+                        if (data?.yearlyHoldings) {
+                          Object.keys(data.yearlyHoldings).forEach(year => allYears.add(Number(year)))
+                        }
+                      })
+                      return Array.from(allYears).sort().map(year => (
+                        <th key={year} className="text-center p-2">Price / MCap (B)</th>
+                      ))
+                    })()}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Get all unique tickers from all strategies and years
+                    const allTickers = new Set<string>()
+                    strategies.forEach(strategy => {
+                      const data = results[strategy.key]
+                      if (data?.yearlyHoldings) {
+                        Object.values(data.yearlyHoldings).forEach((yearData: any) => {
+                          Object.keys(yearData).forEach(ticker => allTickers.add(ticker))
+                        })
+                      }
+                    })
+                    
+                    // Get all years
+                    const allYears = new Set<number>()
+                    strategies.forEach(strategy => {
+                      const data = results[strategy.key]
+                      if (data?.yearlyHoldings) {
+                        Object.keys(data.yearlyHoldings).forEach(year => allYears.add(Number(year)))
+                      }
+                    })
+                    const sortedYears = Array.from(allYears).sort()
+                    
+                    return Array.from(allTickers).sort().map(ticker => (
+                      <tr key={ticker} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="p-3 font-mono font-medium">{ticker}</td>
+                        {sortedYears.map(year => {
+                          // Find data for this ticker in this year from any strategy
+                          let priceData = null
+                          for (const strategy of strategies) {
+                            const data = results[strategy.key]
+                            if (data?.yearlyHoldings?.[year]?.[ticker]) {
+                              priceData = data.yearlyHoldings[year][ticker]
+                              break
+                            }
+                          }
+                          
+                          return (
+                            <td key={year} className="p-3 text-center text-xs">
+                              {priceData ? (
+                                <div className="space-y-1">
+                                  <div className="font-medium text-blue-600">
+                                    ${priceData.price.toFixed(2)}
+                                  </div>
+                                  <div className="text-gray-600">
+                                    {/* Show market cap in billions */}
+                                    {priceData.marketCap ? `$${(priceData.marketCap / 1000000000).toFixed(1)}B` : '—'}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-gray-400">—</div>
+                              )}
+                            </td>
+                          )
+                        })}
+                      </tr>
+                    ))
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 text-xs text-gray-500">
+              Price and market cap data from historical records. Market caps may be estimated if actual data unavailable.
+            </div>
+          </div>
         </div>
       </div>
     )
