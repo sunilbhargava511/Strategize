@@ -455,8 +455,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Validate ticker format and catch common typos
+    const validatedTickers = [];
+    const tickerErrors = [];
+    
+    for (const ticker of tickers) {
+      const cleanTicker = ticker.trim().toUpperCase();
+      
+      // Check for common typos
+      const commonCorrections: Record<string, string> = {
+        'APPL': 'AAPL',
+        'MSFT.': 'MSFT',
+        'GOOGL.': 'GOOGL',
+        'AMZN.': 'AMZN',
+        'TSLA.': 'TSLA'
+      };
+      
+      if (commonCorrections[cleanTicker]) {
+        tickerErrors.push(`Did you mean "${commonCorrections[cleanTicker]}" instead of "${ticker}"?`);
+        continue;
+      }
+      
+      // Basic format validation (3-5 letters, no numbers)
+      if (!/^[A-Z]{1,5}$/.test(cleanTicker)) {
+        tickerErrors.push(`"${ticker}" is not a valid ticker format`);
+        continue;
+      }
+      
+      validatedTickers.push(cleanTicker);
+    }
+    
+    if (tickerErrors.length > 0) {
+      return res.status(400).json({
+        error: 'Invalid tickers found',
+        ticker_errors: tickerErrors,
+        message: 'Please correct the ticker symbols and try again'
+      });
+    }
+
+    // Use validated tickers for the rest of the processing
+    const processedTickers = validatedTickers;
+    
     // Check cache first (unless bypassed)
-    const tickerString = tickers.sort().join(',');
+    const tickerString = processedTickers.sort().join(',');
     const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickerString}`;
     if (!bypass_cache) {
       const cached = await cache.get(cacheKey);
@@ -465,7 +506,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(200).json({ ...cached, from_cache: true });
       }
     } else {
-      console.log('Cache bypassed for backtest');
+      console.log('Cache bypassed for backtest - clearing any existing cache');
+      // Clear existing cache entry when bypass is requested
+      try {
+        await cache.del(cacheKey);
+        console.log(`Cleared cache for key: ${cacheKey}`);
+      } catch (error) {
+        console.warn('Failed to clear cache:', error);
+      }
     }
 
     // Check if we have EODHD API token
@@ -518,13 +566,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Calculate real results using EODHD data
-    console.log(`EODHD_API_TOKEN found, running real backtest for ${tickers.length} tickers from ${startYear} to ${endYear}`);
+    console.log(`EODHD_API_TOKEN found, running real backtest for ${processedTickers.length} tickers from ${startYear} to ${endYear}`);
     
     const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache),
-      calculateStrategy(tickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache),
+      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache),
       calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache)
     ]);
 
@@ -538,8 +586,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         startYear, 
         endYear, 
         initialInvestment,
-        tickerCount: tickers.length,
-        tickers: tickers.slice(0, 10)
+        tickerCount: processedTickers.length,
+        tickers: processedTickers.slice(0, 10)
       },
       debug: {
         equalWeightResult: equalWeightBuyHold.finalValue,
@@ -547,10 +595,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         equalWeightRebalancedResult: equalWeightRebalanced.finalValue,
         marketCapRebalancedResult: marketCapRebalanced.finalValue,
         spyBenchmarkResult: spyBenchmark.finalValue,
-        requestedTickers: tickers,
+        requestedTickers: processedTickers,
         usingExchangeSuffix: true
       },
-      message: tickers.length > 10 ? 
+      message: processedTickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
         'Calculations based on real EODHD market data with SPY benchmark.'
     };

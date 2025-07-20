@@ -33,6 +33,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Debug logging
     console.log('Export data:', { startYear, endYear, initialInvestment, tickerCount: tickers.length, tickers: tickers.slice(0, 5) });
+    console.log('Results received for Excel export:', {
+      equalWeightBuyHold: results.equalWeightBuyHold?.finalValue,
+      marketCapBuyHold: results.marketCapBuyHold?.finalValue,
+      equalWeightRebalanced: results.equalWeightRebalanced?.finalValue,
+      marketCapRebalanced: results.marketCapRebalanced?.finalValue,
+      spyBenchmark: results.spyBenchmark?.finalValue
+    });
     
     // Generate year range
     const years: number[] = [];
