@@ -2,10 +2,9 @@
   "name": "stock-backtesting-tool",
   "version": "1.0.0",
   "description": "A comprehensive backtesting application for comparing different investment strategies using S&P 500 historical data",
-  "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "build": "tsc",
+    "dev": "vercel dev",
     "test": "echo \"Error: no test specified\" && exit 1",
     "backtest": "node scripts/run-backtest.js",
     "warm-cache": "node scripts/warmCache.js",
