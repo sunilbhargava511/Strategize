@@ -625,77 +625,97 @@ async function calculateStrategy(
         currentPortfolioValue = initialInvestment;
       }
       
-      // If there are new stocks, rebalance the entire portfolio
+      // If there are new stocks, add them without full rebalancing
       if (newStocks.length > 0) {
-        console.log(`${year}: Adding ${newStocks.length} new stocks: ${newStocks.join(', ')} - Rebalancing entire portfolio`);
-        
-        // Calculate target allocations for ALL stocks (existing + new)
-        const targetAllocations: Record<string, number> = {};
+        console.log(`${year}: Adding ${newStocks.length} new stocks: ${newStocks.join(', ')}`);
         
         if (strategyType === 'equalWeight') {
-          // Equal weight: each stock gets 1/N of portfolio
-          const equalWeight = 1 / availableStocks.length;
-          for (const ticker of availableStocks) {
-            targetAllocations[ticker] = equalWeight;
+          // Equal Weight: New stocks get equal allocation, funded equally by all existing stocks
+          const targetWeightPerStock = 1 / availableStocks.length;
+          const totalAmountNeededForNewStocks = currentPortfolioValue * targetWeightPerStock * newStocks.length;
+          const existingStocksCount = Object.keys(portfolio).length;
+          const contributionPerExistingStock = totalAmountNeededForNewStocks / existingStocksCount;
+          
+          console.log(`  Each new stock needs ${(targetWeightPerStock * 100).toFixed(1)}% allocation = $${(currentPortfolioValue * targetWeightPerStock).toFixed(0)}`);
+          console.log(`  Each existing stock contributes: $${contributionPerExistingStock.toFixed(0)}`);
+          
+          // Sell proportional amount from each existing stock
+          for (const [ticker, holding] of Object.entries(portfolio)) {
+            if (stockPrices[ticker]) {
+              const sharesToSell = contributionPerExistingStock / stockPrices[ticker];
+              portfolio[ticker].shares -= sharesToSell;
+              console.log(`  ${ticker}: Sold ${sharesToSell.toFixed(0)} shares for $${contributionPerExistingStock.toFixed(0)}`);
+            }
+          }
+          
+          // Buy new stocks with the proceeds
+          for (const ticker of newStocks) {
+            const investmentAmount = currentPortfolioValue * targetWeightPerStock;
+            const shares = investmentAmount / stockPrices[ticker];
+            
+            portfolio[ticker] = {
+              shares: shares,
+              addedYear: year
+            };
+            
+            // Track in portfolio composition
+            portfolioComposition[ticker] = {
+              initialWeight: targetWeightPerStock,
+              finalWeight: 0, // Will be calculated at the end
+              available: true
+            };
+            
+            console.log(`  ${ticker}: Added new position with ${shares.toFixed(0)} shares for $${investmentAmount.toFixed(0)} (${(targetWeightPerStock * 100).toFixed(1)}% allocation)`);
           }
         } else {
-          // Market cap weighted: allocate based on market cap proportions
-          const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
-          for (const ticker of availableStocks) {
-            targetAllocations[ticker] = stockMarketCaps[ticker] / totalMarketCap;
-          }
-        }
-        
-        // Sell existing holdings to rebalance
-        const proceedsFromSales: Record<string, number> = {};
-        for (const [ticker, holding] of Object.entries(portfolio)) {
-          if (stockPrices[ticker]) {
-            const currentValue = holding.shares * stockPrices[ticker];
-            const targetValue = currentPortfolioValue * targetAllocations[ticker];
-            
-            if (currentValue > targetValue) {
-              // Sell some shares
-              const sharesToSell = (currentValue - targetValue) / stockPrices[ticker];
-              portfolio[ticker].shares -= sharesToSell;
-              proceedsFromSales[ticker] = sharesToSell * stockPrices[ticker];
-              console.log(`  ${ticker}: Sold ${sharesToSell.toFixed(0)} shares for $${proceedsFromSales[ticker].toFixed(0)} to rebalance`);
-            }
-          }
-        }
-        
-        // Calculate total cash available for new stocks and rebalancing
-        const totalCashForRebalancing = Object.values(proceedsFromSales).reduce((sum, value) => sum + value, 0);
-        
-        // Buy new stocks and add to existing holdings as needed
-        for (const ticker of availableStocks) {
-          const targetValue = currentPortfolioValue * targetAllocations[ticker];
-          const currentValue = portfolio[ticker] ? (portfolio[ticker].shares * stockPrices[ticker]) : 0;
+          // Market Cap Weighted: New stocks get market cap allocation, funded proportionally by existing stocks
+          const allStockMarketCaps = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+          const newStocksMarketCap = newStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+          const newStocksTargetWeight = newStocksMarketCap / allStockMarketCaps;
+          const totalAmountNeededForNewStocks = currentPortfolioValue * newStocksTargetWeight;
           
-          if (targetValue > currentValue) {
-            // Buy more shares (either new stock or add to existing)
-            const additionalInvestment = targetValue - currentValue;
-            const sharesToBuy = additionalInvestment / stockPrices[ticker];
-            
-            if (portfolio[ticker]) {
-              // Add to existing position
-              portfolio[ticker].shares += sharesToBuy;
-              console.log(`  ${ticker}: Bought ${sharesToBuy.toFixed(0)} additional shares for $${additionalInvestment.toFixed(0)}`);
-            } else {
-              // New position
-              portfolio[ticker] = {
-                shares: sharesToBuy,
-                addedYear: year
-              };
-              
-              // Track in portfolio composition
-              portfolioComposition[ticker] = {
-                initialWeight: targetAllocations[ticker],
-                finalWeight: 0, // Will be calculated at the end
-                available: true
-              };
-              
-              console.log(`  ${ticker}: Added new position with ${sharesToBuy.toFixed(0)} shares for $${additionalInvestment.toFixed(0)} (${(targetAllocations[ticker] * 100).toFixed(1)}% allocation)`);
+          console.log(`  New stocks total market cap weight: ${(newStocksTargetWeight * 100).toFixed(1)}% = $${totalAmountNeededForNewStocks.toFixed(0)}`);
+          
+          // Calculate current weights of existing stocks
+          const existingPortfolioValue = currentPortfolioValue;
+          const existingWeights: Record<string, number> = {};
+          
+          for (const [ticker, holding] of Object.entries(portfolio)) {
+            if (stockPrices[ticker]) {
+              const currentValue = holding.shares * stockPrices[ticker];
+              existingWeights[ticker] = currentValue / existingPortfolioValue;
             }
+          }
+          
+          // Sell from existing stocks proportionally to their current weights
+          for (const [ticker, holding] of Object.entries(portfolio)) {
+            if (stockPrices[ticker] && existingWeights[ticker]) {
+              const contributionAmount = totalAmountNeededForNewStocks * existingWeights[ticker];
+              const sharesToSell = contributionAmount / stockPrices[ticker];
+              portfolio[ticker].shares -= sharesToSell;
+              console.log(`  ${ticker}: Sold ${sharesToSell.toFixed(0)} shares for $${contributionAmount.toFixed(0)} (${(existingWeights[ticker] * 100).toFixed(1)}% of contribution)`);
+            }
+          }
+          
+          // Buy new stocks according to their market cap weights
+          for (const ticker of newStocks) {
+            const targetWeight = stockMarketCaps[ticker] / allStockMarketCaps;
+            const investmentAmount = currentPortfolioValue * targetWeight;
+            const shares = investmentAmount / stockPrices[ticker];
+            
+            portfolio[ticker] = {
+              shares: shares,
+              addedYear: year
+            };
+            
+            // Track in portfolio composition
+            portfolioComposition[ticker] = {
+              initialWeight: targetWeight,
+              finalWeight: 0, // Will be calculated at the end
+              available: true
+            };
+            
+            console.log(`  ${ticker}: Added new position with ${shares.toFixed(0)} shares for $${investmentAmount.toFixed(0)} (${(targetWeight * 100).toFixed(1)}% market cap allocation)`);
           }
         }
       } else if (year === startYear) {
