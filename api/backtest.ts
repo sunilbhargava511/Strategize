@@ -593,19 +593,24 @@ async function calculateStrategy(
           availableStocks.push(ticker);
           stockPrices[ticker] = yearData.adjusted_close;
           
-          // Get market cap for market cap weighted strategies
-          if (strategyType === 'marketCap') {
-            try {
-              const cacheKey = `market-cap:${ticker}:${yearStart}`;
-              const cachedMarketCap = await cache.get(cacheKey) as any;
-              if (cachedMarketCap && cachedMarketCap.market_cap) {
-                stockMarketCaps[ticker] = cachedMarketCap.market_cap;
+          // Always get market cap data (needed for market cap weighted strategies)
+          try {
+            const cacheKey = `market-cap:${ticker}:${yearStart}`;
+            const cachedMarketCap = await cache.get(cacheKey) as any;
+            if (cachedMarketCap && cachedMarketCap.market_cap) {
+              stockMarketCaps[ticker] = cachedMarketCap.market_cap;
+            } else {
+              // Try to fetch market cap data if not in cache
+              const marketCapData = await fetchMarketCapData(ticker, yearStart, bypassCache);
+              if (marketCapData && marketCapData.market_cap) {
+                stockMarketCaps[ticker] = marketCapData.market_cap;
               } else {
+                // Fallback: estimate based on price
                 stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
               }
-            } catch (error) {
-              stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
             }
+          } catch (error) {
+            stockMarketCaps[ticker] = yearData.adjusted_close * 1000000000;
           }
         }
       }
@@ -744,11 +749,14 @@ async function calculateStrategy(
           }
         } else {
           const totalMarketCap = availableStocks.reduce((sum, ticker) => sum + stockMarketCaps[ticker], 0);
+          console.log(`  Market cap weighted initial allocation - Total market cap: $${(totalMarketCap / 1000000000).toFixed(2)}B`);
           
           for (const ticker of availableStocks) {
             const weight = stockMarketCaps[ticker] / totalMarketCap;
             const investment = initialInvestment * weight;
             const shares = investment / stockPrices[ticker];
+            console.log(`  ${ticker}: Market cap $${(stockMarketCaps[ticker] / 1000000000).toFixed(2)}B (${(weight * 100).toFixed(1)}%)`);
+            
             
             portfolio[ticker] = {
               shares: shares,
