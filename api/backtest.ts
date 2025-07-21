@@ -2146,7 +2146,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     try {
       // Calculate strategies with timeout protection
-      const strategyTimeout = 45000; // 45 seconds max per strategy set
+      const strategyTimeout = 480000; // 8 minutes max for all strategies (Vercel Pro has 10min limit)
       const strategiesPromise = Promise.all([
         // Strategy 1: Equal Weight Buy & Hold
         (async () => {
