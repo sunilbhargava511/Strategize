@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 
 interface ResultsDisplayProps {
   results: any
@@ -38,6 +39,89 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(value)
+  }
+
+  // Generate chart data for performance comparison
+  const generateChartData = () => {
+    const chartData: any[] = []
+    const startYear = results.parameters?.startYear || 2010
+    const endYear = results.parameters?.endYear || 2024
+    const initialInvestment = results.parameters?.initialInvestment || 1000000
+
+    for (let year = startYear; year <= endYear; year++) {
+      const dataPoint: any = { year: year.toString() }
+      
+      strategies.forEach(strategy => {
+        const data = results[strategy.key]
+        if (data?.yearlyHoldings?.[year]) {
+          // Calculate portfolio value for this year
+          let totalValue = 0
+          Object.values(data.yearlyHoldings[year]).forEach((holding: any) => {
+            totalValue += holding.value || 0
+          })
+          dataPoint[strategy.key] = totalValue
+        } else if (year === startYear) {
+          dataPoint[strategy.key] = initialInvestment
+        }
+      })
+      
+      chartData.push(dataPoint)
+    }
+    
+    return chartData
+  }
+
+  // Get top performing strategy
+  const getTopPerformer = () => {
+    let topStrategy = strategies[0]
+    let topReturn = results[topStrategy.key]?.totalReturn || -Infinity
+    
+    strategies.forEach(strategy => {
+      const strategyReturn = results[strategy.key]?.totalReturn || -Infinity
+      if (strategyReturn > topReturn) {
+        topReturn = strategyReturn
+        topStrategy = strategy
+      }
+    })
+    
+    return topStrategy.key
+  }
+
+  // Generate last year data for strategy tables
+  const generateLastYearData = (strategyKey: string) => {
+    const data = results[strategyKey]
+    if (!data?.yearlyHoldings) return []
+    
+    const endYear = results.parameters?.endYear || 2024
+    const startYear = endYear - 1
+    
+    const endYearHoldings = data.yearlyHoldings[endYear] || {}
+    const startYearHoldings = data.yearlyHoldings[startYear] || {}
+    
+    const tickerData: any[] = []
+    const allTickers = new Set([
+      ...Object.keys(endYearHoldings),
+      ...Object.keys(startYearHoldings)
+    ])
+    
+    allTickers.forEach(ticker => {
+      const startValue = startYearHoldings[ticker]?.value || 0
+      const endValue = endYearHoldings[ticker]?.value || 0
+      const gain = endValue - startValue
+      const gainPercent = startValue > 0 ? (gain / startValue) * 100 : 0
+      
+      if (endValue > 0 || startValue > 0) { // Only include tickers with positions
+        tickerData.push({
+          ticker,
+          startValue,
+          endValue,
+          gain,
+          gainPercent
+        })
+      }
+    })
+    
+    return tickerData
   }
 
   const handleExcelDownload = async () => {
@@ -552,15 +636,218 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         </table>
       </div>
 
-      {/* Chart Placeholder */}
-      <div className="bg-gray-50 rounded-lg p-8 mb-6 text-center">
-        <div className="text-4xl mb-4">📈</div>
-        <h3 className="text-lg font-semibold text-gray-700 mb-2">
-          Performance Chart
-        </h3>
-        <p className="text-gray-600">
-          Interactive chart visualization will be implemented here
-        </p>
+      {/* Interactive Performance Chart */}
+      <div className="bg-white rounded-lg border p-6 mb-6">
+        <div className="flex items-center space-x-3 mb-6">
+          <span className="text-2xl">📈</span>
+          <h3 className="text-xl font-semibold text-gray-900">Portfolio Performance Comparison</h3>
+        </div>
+        
+        <div className="h-96">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={generateChartData()}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis 
+                dataKey="year" 
+                stroke="#6b7280"
+                fontSize={12}
+              />
+              <YAxis 
+                tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
+                stroke="#6b7280"
+                fontSize={12}
+              />
+              <Tooltip 
+                formatter={(value: number) => [formatCurrency(value), '']}
+                labelFormatter={(year) => `Year: ${year}`}
+                contentStyle={{
+                  backgroundColor: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px'
+                }}
+              />
+              <Legend />
+              
+              {/* Strategy Lines */}
+              <Line 
+                type="monotone" 
+                dataKey="equalWeightBuyHold" 
+                stroke="#10b981" 
+                strokeWidth={getTopPerformer() === 'equalWeightBuyHold' ? 3 : 2}
+                name="Equal Weight Buy & Hold" 
+                dot={{ r: 4 }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="marketCapBuyHold" 
+                stroke="#3b82f6" 
+                strokeWidth={getTopPerformer() === 'marketCapBuyHold' ? 3 : 2}
+                name="Market Cap Buy & Hold" 
+                dot={{ r: 4 }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="equalWeightRebalanced" 
+                stroke="#8b5cf6" 
+                strokeWidth={getTopPerformer() === 'equalWeightRebalanced' ? 3 : 2}
+                name="Equal Weight Rebalanced" 
+                dot={{ r: 4 }}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="marketCapRebalanced" 
+                stroke="#f59e0b" 
+                strokeWidth={getTopPerformer() === 'marketCapRebalanced' ? 3 : 2}
+                name="Market Cap Rebalanced" 
+                dot={{ r: 4 }}
+              />
+              
+              {/* SPY Benchmark - Always thick line */}
+              <Line 
+                type="monotone" 
+                dataKey="spyBenchmark" 
+                stroke="#ef4444" 
+                strokeWidth={3}
+                name="SPY Benchmark" 
+                dot={{ r: 5 }}
+                strokeDasharray="5 5"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        
+        <div className="mt-4 text-sm text-gray-600 flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-0.5 bg-red-500" style={{ borderStyle: 'dashed' }}></div>
+            <span>SPY Benchmark (thicker dashed line)</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-3 h-0.5 bg-gray-400"></div>
+            <span>Top performer highlighted with thicker line</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Last Year Performance Tables */}
+      <div className="bg-white rounded-lg border p-6 mb-6">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <span className="text-2xl">📊</span>
+            <h3 className="text-xl font-semibold text-gray-900">Last Year Performance by Strategy</h3>
+          </div>
+          
+          {/* Unified Sorting Controls */}
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-gray-600">Sort all tables by:</span>
+            <button
+              onClick={() => {
+                if (sortBy === 'ticker') {
+                  setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('ticker')
+                  setSortOrder('asc')
+                }
+              }}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                sortBy === 'ticker' 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Ticker {sortBy === 'ticker' && (sortOrder === 'asc' ? '↑' : '↓')}
+            </button>
+            <button
+              onClick={() => {
+                if (sortBy === 'gains') {
+                  setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                } else {
+                  setSortBy('gains')
+                  setSortOrder('desc')
+                }
+              }}
+              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                sortBy === 'gains' 
+                  ? 'bg-blue-100 text-blue-700' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Gains {sortBy === 'gains' && (sortOrder === 'asc' ? '↑' : '↓')}
+            </button>
+          </div>
+        </div>
+        
+        {/* Strategy Tables Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {strategies.slice(0, 4).map(strategy => {
+            const data = generateLastYearData(strategy.key)
+            const endYear = results.parameters?.endYear || 2024
+            
+            // Apply sorting
+            if (sortBy === 'ticker') {
+              data.sort((a, b) => {
+                const comparison = a.ticker.localeCompare(b.ticker)
+                return sortOrder === 'asc' ? comparison : -comparison
+              })
+            } else {
+              data.sort((a, b) => {
+                const comparison = a.gain - b.gain
+                return sortOrder === 'asc' ? comparison : -comparison
+              })
+            }
+            
+            // Calculate cumulative percentages
+            let cumulativePercent = 0
+            
+            return (
+              <div key={strategy.key} className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="text-lg">{strategy.icon}</span>
+                  <h4 className="font-semibold text-gray-900">{strategy.name}</h4>
+                  <span className="text-sm text-gray-500">({endYear-1}-{endYear})</span>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left p-2 font-medium text-gray-700">Ticker</th>
+                        <th className="text-right p-2 font-medium text-gray-700">Gain</th>
+                        <th className="text-right p-2 font-medium text-gray-700">Cumulative %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.slice(0, 8).map((item, index) => {
+                        const individualPercent = data.reduce((sum, d) => sum + Math.max(0, d.gain), 0) > 0
+                          ? (Math.max(0, item.gain) / data.reduce((sum, d) => sum + Math.max(0, d.gain), 0)) * 100
+                          : 0
+                        cumulativePercent += individualPercent
+                        
+                        return (
+                          <tr key={item.ticker} className="border-b border-gray-100 hover:bg-white">
+                            <td className="p-2 font-mono font-medium">{item.ticker}</td>
+                            <td className={`p-2 text-right font-medium ${item.gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {item.gain >= 0 ? '+' : ''}{formatCurrency(item.gain)}
+                            </td>
+                            <td className={`p-2 text-right font-medium ${cumulativePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {cumulativePercent.toFixed(1)}%
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {data.length > 8 && (
+                        <tr>
+                          <td colSpan={3} className="p-2 text-center text-gray-500 text-xs">
+                            ... and {data.length - 8} more tickers
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Export Options */}
