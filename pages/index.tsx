@@ -488,6 +488,7 @@ export default function Home() {
                         </div>
                       </div>
                     )}
+                  </div>
                 ) : (
                   <div className="w-full space-y-4">
                     {/* Export Controls */}
