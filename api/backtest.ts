@@ -1262,7 +1262,22 @@ async function calculateStrategy(
   }
   
   phaseTimings.dataFetching = Date.now() - dataFetchStart;
+  
+  // Count successful vs failed tickers
+  const successfulTickers = tickers.filter(ticker => 
+    tickerAvailability[ticker]?.hasStart || tickerAvailability[ticker]?.hasEnd
+  );
+  const failedTickers = tickers.filter(ticker => 
+    !tickerAvailability[ticker]?.hasStart && !tickerAvailability[ticker]?.hasEnd
+  );
+  
   console.log(`✅ All ${tickers.length} tickers processed in ${Math.ceil(tickers.length/BATCH_SIZE)} batches`);
+  console.log(`📊 DATA FETCHING SUMMARY:`);
+  console.log(`   ✅ Successful: ${successfulTickers.length} tickers`);
+  console.log(`   ❌ Failed: ${failedTickers.length} tickers`);
+  if (failedTickers.length > 0) {
+    console.log(`   ❌ Failed tickers: ${failedTickers.join(', ')}`);
+  }
   console.log(`⏱️ Phase 1 Complete: Data fetching took ${(phaseTimings.dataFetching / 1000).toFixed(1)}s`);
   
   // Phase 2: Strategy Calculation
@@ -1302,8 +1317,24 @@ async function calculateStrategy(
   // Add warning for insufficient stock diversity
   if (validTickers.length < tickers.length) {
     const missingTickers = tickers.filter(t => !validTickers.includes(t));
-    console.log(`⚠️  STRATEGY LIMITATION: ${missingTickers.length} stocks not available at start date (${startDate}): ${missingTickers.join(', ')}`);
-    console.log(`ℹ️  Only ${validTickers.length} stocks will be used, reducing strategy differentiation`);
+    console.log(`⚠️  TICKER FILTERING ANALYSIS:`);
+    console.log(`📊 Total submitted: ${tickers.length} tickers`);
+    console.log(`✅ Valid/Available: ${validTickers.length} tickers`);
+    console.log(`❌ Filtered out: ${missingTickers.length} tickers`);
+    console.log(`📋 All submitted tickers: ${tickers.join(', ')}`);
+    console.log(`✅ Valid tickers: ${validTickers.join(', ')}`);
+    console.log(`❌ Missing tickers: ${missingTickers.join(', ')}`);
+    
+    // Analyze why each missing ticker was filtered
+    console.log(`\n🔍 DETAILED ANALYSIS OF MISSING TICKERS:`);
+    missingTickers.forEach(ticker => {
+      const avail = tickerAvailability[ticker];
+      if (!avail) {
+        console.log(`   ${ticker}: No availability data (not processed)`);
+      } else {
+        console.log(`   ${ticker}: hasStart=${avail.hasStart}, hasEnd=${avail.hasEnd} (start=${startDate}, end=${endDate})`);
+      }
+    });
   }
   
   if (validTickers.length === 0) {
