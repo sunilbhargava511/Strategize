@@ -907,33 +907,13 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
             </div>
             <div>
               <span className="text-blue-700">Portfolio Size:</span>
-              <span className="ml-2 font-medium">
-                {results.parameters.tickerCount} tickers
-                {results.parameters.isOptimized && results.parameters.originalTickerCount && (
-                  <span className="text-orange-600 ml-1">
-                    (optimized from {results.parameters.originalTickerCount})
-                  </span>
-                )}
-              </span>
+              <span className="ml-2 font-medium">{results.parameters.tickerCount} tickers</span>
             </div>
             <div>
               <span className="text-blue-700">Strategies Compared:</span>
               <span className="ml-2 font-medium">{strategies.filter(s => results[s.key]).length}</span>
             </div>
           </div>
-          
-          {results.parameters.isOptimized && (
-            <div className="mt-3 p-3 bg-orange-50 border border-orange-200 rounded">
-              <div className="flex items-center space-x-2 text-orange-800">
-                <span>⚡</span>
-                <span className="text-sm font-medium">Large Portfolio Optimization</span>
-              </div>
-              <p className="text-sm text-orange-700 mt-1">
-                Portfolio optimized from {results.parameters.originalTickerCount} to {results.parameters.tickerCount} tickers 
-                for optimal performance and reliable completion.
-              </p>
-            </div>
-          )}
         </div>
       )}
 

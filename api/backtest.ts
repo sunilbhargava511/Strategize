@@ -386,7 +386,7 @@ function isETF(ticker: string): boolean {
   return etfTickers.has(ticker.toUpperCase());
 }
 
-async function getSharesOutstandingForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+async function getSharesOutstandingForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<number | null> {
   try {
     // ETFs don't have traditional shares outstanding in the same way as stocks
     if (isETF(ticker)) {
@@ -400,13 +400,16 @@ async function getSharesOutstandingForYear(ticker: string, year: number, bypassC
     
     // Check cache first unless bypassed
     if (!bypassCache) {
+      if (cacheStats) cacheStats.totalCacheOperations++;
       const cached = await cache.get(cacheKey) as any;
       if (cached && cached.shares_outstanding) {
+        if (cacheStats) cacheStats.sharesOutstandingHits++;
         console.log(`Cache hit for shares outstanding ${ticker} ${year}: ${cached.shares_outstanding.toLocaleString()}`);
         return cached.shares_outstanding;
       }
     }
     
+    if (cacheStats) cacheStats.sharesOutstandingMisses++;
     console.log(`Cache miss for shares outstanding ${ticker} ${year}, fetching from EODHD`);
     
     // Get API token
@@ -432,6 +435,7 @@ async function getSharesOutstandingForYear(ticker: string, year: number, bypassC
           shares_outstanding: sharesOutstanding,
           cached_at: new Date().toISOString()
         });
+        if (cacheStats) cacheStats.newCacheEntries++;
         console.log(`✅ Cached shares outstanding for ${ticker} ${year}: ${sharesOutstanding.toLocaleString()}`);
       } catch (cacheError) {
         console.warn(`Failed to cache shares outstanding for ${ticker} ${year}:`, cacheError);
@@ -451,7 +455,7 @@ async function getSharesOutstandingForYear(ticker: string, year: number, bypassC
 
 // Get adjusted price for a ticker at the start of a given year
 // First checks cache, then calls EODHD API, returns null if unavailable
-async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<number | null> {
   try {
     // Use January 2nd to avoid New Year's Day holiday
     const startOfYearDate = `${year}-01-02`;
@@ -459,13 +463,16 @@ async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache
     
     // Check cache first unless bypassed
     if (!bypassCache) {
+      if (cacheStats) cacheStats.totalCacheOperations++;
       const cached = await cache.get(cacheKey) as any;
       if (cached && cached.adjusted_close) {
+        if (cacheStats) cacheStats.priceDataHits++;
         console.log(`Cache hit for adjusted price ${ticker} ${year}: $${cached.adjusted_close.toFixed(2)}`);
         return cached.adjusted_close;
       }
     }
     
+    if (cacheStats) cacheStats.priceDataMisses++;
     console.log(`Cache miss for adjusted price ${ticker} ${year}, fetching from EODHD`);
     
     // Get API token
@@ -496,6 +503,7 @@ async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache
           volume: priceData.volume,
           cached_at: new Date().toISOString()
         });
+        if (cacheStats) cacheStats.newCacheEntries++;
         console.log(`✅ Cached adjusted price for ${ticker} ${year}: $${priceData.adjusted_close.toFixed(2)} (actual date: ${priceData.date})`);
       } catch (cacheError) {
         console.warn(`Failed to cache adjusted price for ${ticker} ${year}:`, cacheError);
@@ -620,7 +628,7 @@ async function getMarketCapFromAPI(ticker: string, date: string, bypassCache: bo
   }
 }
 
-async function getMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
+async function getMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<number | null> {
   try {
     // ETFs don't have market cap in the traditional sense - they track an index
     if (isETF(ticker)) {
@@ -632,19 +640,22 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
     
     // Check cache first unless bypassed
     if (!bypassCache) {
+      if (cacheStats) cacheStats.totalCacheOperations++;
       const cached = await cache.get(cacheKey) as any;
       if (cached && cached.market_cap) {
+        if (cacheStats) cacheStats.marketCapHits++;
         console.log(`Cache hit for market cap ${ticker} ${year}: $${(cached.market_cap / 1000000000).toFixed(2)}B`);
         return cached.market_cap;
       }
     }
     
+    if (cacheStats) cacheStats.marketCapMisses++;
     console.log(`Cache miss for market cap ${ticker} ${year}, trying calculation from price × shares outstanding`);
     
     // Get both adjusted price and shares outstanding for the year
     const [adjustedPrice, sharesOutstanding] = await Promise.all([
-      getAdjustedPriceForYear(ticker, year, bypassCache),
-      getSharesOutstandingForYear(ticker, year, bypassCache)
+      getAdjustedPriceForYear(ticker, year, bypassCache, cacheStats),
+      getSharesOutstandingForYear(ticker, year, bypassCache, cacheStats)
     ]);
     
     // If we have both values, calculate market cap the traditional way
@@ -663,6 +674,7 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
           source: 'calculated_price_shares',
           calculated_at: new Date().toISOString()
         });
+        if (cacheStats) cacheStats.newCacheEntries++;
         console.log(`✅ Cached calculated market cap for ${ticker} ${year}: $${(marketCap / 1000000000).toFixed(2)}B`);
       } catch (cacheError) {
         console.warn(`Failed to cache market cap for ${ticker} ${year}:`, cacheError);
@@ -983,14 +995,14 @@ async function calculateRebalancedStrategy(
         };
         
         // Get real market cap for weighting using the new helper function
-        const marketCap = await getMarketCapForYear(ticker, year, bypassCache);
+        const marketCap = await getMarketCapForYear(ticker, year, bypassCache, cacheStats);
         if (marketCap) {
           stockMarketCaps[ticker] = marketCap;
           successfulMarketCapData.push({ticker, year, marketCap});
         } else {
           // Track detailed information about what's missing
-          const hasPrice = await getAdjustedPriceForYear(ticker, year, bypassCache);
-          const hasSharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
+          const hasPrice = await getAdjustedPriceForYear(ticker, year, bypassCache, cacheStats);
+          const hasSharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache, cacheStats);
           
           missingMarketCapData.push({
             ticker, 
@@ -1053,7 +1065,7 @@ async function calculateRebalancedStrategy(
       
       // Store holdings data
       // Get real shares outstanding from EODHD API
-      const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
+      const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache, cacheStats);
       
       yearlyHoldings[year][ticker] = {
         weight: allocation,
@@ -1139,6 +1151,22 @@ async function calculateStrategy(
   console.log(`📊 Strategy: ${strategyType} ${rebalance ? 'Rebalanced' : 'Buy & Hold'}`);
   console.log(`🔄 Fetching data for ${tickers.length} tickers from ${startDate} to ${endDate}`);
   
+  // Initialize timing tracking
+  const startTime = Date.now();
+  const phaseTimings: Record<string, number> = {};
+  
+  // Initialize cache statistics tracking
+  const cacheStats = {
+    priceDataHits: 0,
+    priceDataMisses: 0,
+    sharesOutstandingHits: 0,
+    sharesOutstandingMisses: 0,
+    marketCapHits: 0,
+    marketCapMisses: 0,
+    newCacheEntries: 0,
+    totalCacheOperations: 0
+  };
+  
   // Dynamic batch sizing based on portfolio size
   const getBatchSize = (tickerCount: number) => {
     if (tickerCount > 150) return 20; // Large batches for very large portfolios
@@ -1159,6 +1187,10 @@ async function calculateStrategy(
   
   console.log(`🔄 Processing ${tickers.length} tickers in batches of ${BATCH_SIZE} (${Math.ceil(tickers.length/BATCH_SIZE)} batches total)`);
   console.log(`⏱️ Using ${PAUSE_TIME}ms pauses between batches for optimal performance`);
+  
+  // Phase 1: Data Fetching
+  const dataFetchStart = Date.now();
+  console.log(`\n⏱️ Phase 1: Starting data fetching for ${tickers.length} tickers...`);
   
   // Process tickers in batches
   for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
@@ -1184,7 +1216,7 @@ async function calculateStrategy(
           
           // Only get market cap for market cap weighted strategies
           if (strategyType === 'marketCap') {
-            const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
+            const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache, cacheStats);
             if (marketCap) {
               initialMarketCaps[ticker] = marketCap;
               console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
@@ -1226,7 +1258,13 @@ async function calculateStrategy(
     }
   }
   
+  phaseTimings.dataFetching = Date.now() - dataFetchStart;
   console.log(`✅ All ${tickers.length} tickers processed in ${Math.ceil(tickers.length/BATCH_SIZE)} batches`);
+  console.log(`⏱️ Phase 1 Complete: Data fetching took ${(phaseTimings.dataFetching / 1000).toFixed(1)}s`);
+  
+  // Phase 2: Strategy Calculation
+  const strategyCalcStart = Date.now();
+  console.log(`\n⏱️ Phase 2: Starting strategy calculations...`);
   
   // Determine which stocks to use based on strategy type
   let validTickers: string[];
@@ -1307,7 +1345,7 @@ async function calculateStrategy(
       
       for (const ticker of tickers) {
         // Get price data (required for all strategies)
-        const price = await getAdjustedPriceForYear(ticker, year, bypassCache);
+        const price = await getAdjustedPriceForYear(ticker, year, bypassCache, cacheStats);
         
         if (price) {
           availableStocks.push(ticker);
@@ -1315,7 +1353,7 @@ async function calculateStrategy(
           
           // Only get market cap for market cap weighted strategies
           if (strategyType === 'marketCap') {
-            const marketCap = await getMarketCapForYear(ticker, year, bypassCache);
+            const marketCap = await getMarketCapForYear(ticker, year, bypassCache, cacheStats);
             if (marketCap) {
               stockMarketCaps[ticker] = marketCap;
               console.log(`  ✅ Real data for ${ticker}: $${price.toFixed(2)} price, $${(marketCap / 1000000000).toFixed(2)}B market cap`);
@@ -1523,7 +1561,7 @@ async function calculateStrategy(
           totalPortfolioValue += currentValue;
           
           // Get real shares outstanding from EODHD API
-          const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache);
+          const sharesOutstanding = await getSharesOutstandingForYear(ticker, year, bypassCache, cacheStats);
           
           yearlyHoldings[year][ticker] = {
             weight: 0, // Will be calculated below
@@ -1597,13 +1635,39 @@ async function calculateStrategy(
     console.log(`\n`);
   }
 
+  // Calculate final timing
+  phaseTimings.strategyCalculation = Date.now() - strategyCalcStart;
+  phaseTimings.total = Date.now() - startTime;
+  
+  // Log detailed timing information
+  console.log(`\n⏱️ TIMING BREAKDOWN FOR ${strategyType.toUpperCase()} ${rebalance ? 'REBALANCED' : 'BUY & HOLD'}:`);
+  console.log(`📊 Data Fetching: ${(phaseTimings.dataFetching / 1000).toFixed(1)}s`);
+  console.log(`🔢 Strategy Calculation: ${(phaseTimings.strategyCalculation / 1000).toFixed(1)}s`);
+  console.log(`⏱️ Total Time: ${(phaseTimings.total / 1000).toFixed(1)}s`);
+  console.log(`📈 Processing Rate: ${(tickers.length / (phaseTimings.total / 1000)).toFixed(1)} tickers/second`);
+  
+  // Log detailed cache statistics
+  console.log(`\n📊 CACHE STATISTICS FOR ${strategyType.toUpperCase()} ${rebalance ? 'REBALANCED' : 'BUY & HOLD'}:`);
+  console.log(`📈 Price Data: ${cacheStats.priceDataHits} hits, ${cacheStats.priceDataMisses} misses`);
+  console.log(`📊 Shares Outstanding: ${cacheStats.sharesOutstandingHits} hits, ${cacheStats.sharesOutstandingMisses} misses`);
+  console.log(`💰 Market Cap: ${cacheStats.marketCapHits} hits, ${cacheStats.marketCapMisses} misses`);
+  console.log(`💾 New Cache Entries: ${cacheStats.newCacheEntries}`);
+  console.log(`🔄 Total Cache Operations: ${cacheStats.totalCacheOperations}`);
+  
+  const totalHits = cacheStats.priceDataHits + cacheStats.sharesOutstandingHits + cacheStats.marketCapHits;
+  const totalMisses = cacheStats.priceDataMisses + cacheStats.sharesOutstandingMisses + cacheStats.marketCapMisses;
+  const hitRate = totalHits + totalMisses > 0 ? ((totalHits / (totalHits + totalMisses)) * 100).toFixed(1) : '0.0';
+  console.log(`📊 Overall Cache Hit Rate: ${hitRate}% (${totalHits} hits, ${totalMisses} misses)`);
+
   return {
     totalReturn,
     annualizedReturn,
     finalValue: currentValue,
     yearlyValues,
     yearlyHoldings,
-    portfolioComposition
+    portfolioComposition,
+    cacheStats,
+    timings: phaseTimings
   };
 }
 
@@ -1622,9 +1686,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    const apiStartTime = Date.now();
     console.log('=== BACKTEST API CALLED (v2) ===');
     const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
     console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache });
+    
+    // Initialize overall timing tracking
+    const overallTimings: Record<string, number> = {};
 
     // Validate inputs
     if (!startYear || !endYear || !initialInvestment) {
@@ -1641,6 +1709,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Phase 1: Ticker Validation
+    const validationStart = Date.now();
+    console.log(`\n⏱️ Starting ticker validation for ${tickers.length} tickers...`);
+    
     // Comprehensive ticker validation system
     const validatedTickers: string[] = [];
     const tickerValidationResults: {
@@ -1861,23 +1933,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       corrections.forEach(c => console.log(`   ${c.ticker} → ${c.correctedTo}`));
     }
 
-    // Handle very large portfolios with intelligent optimization
-    let processedTickers = finalValidTickers;
-    let isLargePortfolioOptimized = false;
+    // Process all valid tickers - no arbitrary limits
+    const processedTickers = finalValidTickers;
+    const isLargePortfolioOptimized = false;
     
-    if (finalValidTickers.length > 150) {
-      console.log(`\n⚡ VERY LARGE PORTFOLIO DETECTED (${finalValidTickers.length} tickers)`);
-      console.log(`🎯 For optimal performance and to avoid timeouts, using top 100 tickers`);
-      console.log(`📊 This provides representative results while ensuring completion`);
-      
-      // For very large portfolios, use a representative sample
-      processedTickers = finalValidTickers.slice(0, 100);
-      isLargePortfolioOptimized = true;
-      
-      console.log(`✅ Portfolio optimized: ${processedTickers.length} tickers selected from ${finalValidTickers.length} total`);
-    } else {
-      // Use all tickers for manageable portfolios
-      processedTickers = finalValidTickers;
+    overallTimings.validation = Date.now() - validationStart;
+    console.log(`\n📊 PORTFOLIO SIZE: ${finalValidTickers.length} tickers`);
+    console.log(`⏱️ Ticker validation completed in ${(overallTimings.validation / 1000).toFixed(1)}s`);
+    if (finalValidTickers.length > 100) {
+      console.log(`⚡ Large portfolio detected - using optimized batching strategy`);
     }
     
     // Check cache first (unless bypassed)
@@ -2036,6 +2100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     let equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark;
     
+    // Phase 2: Strategy Calculations
+    const strategiesStart = Date.now();
+    console.log(`\n⏱️ Starting strategy calculations for all 5 strategies...`);
+    
     try {
       // Calculate strategies with timeout protection
       const strategyTimeout = 45000; // 45 seconds max per strategy set
@@ -2116,7 +2184,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         timeoutPromise
       ]) as any;
       
+      overallTimings.strategies = Date.now() - strategiesStart;
       console.log(`\n🎉 ALL STRATEGY CALCULATIONS COMPLETED SUCCESSFULLY!`);
+      console.log(`⏱️ Strategy calculations completed in ${(overallTimings.strategies / 1000).toFixed(1)}s`);
       console.log(`📈 FINAL RESULTS SUMMARY:`);
       console.log(`   ⚖️  Equal Weight Buy & Hold:    ${formatCurrency(equalWeightBuyHold.finalValue)} (${equalWeightBuyHold.totalReturn.toFixed(2)}%)`);
       console.log(`   📈 Market Cap Buy & Hold:      ${formatCurrency(marketCapBuyHold.finalValue)} (${marketCapBuyHold.totalReturn.toFixed(2)}%)`);
@@ -2195,6 +2265,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Calculations based on real EODHD market data with SPY benchmark.'
     };
 
+    // Add final timing information
+    overallTimings.total = Date.now() - apiStartTime;
+    overallTimings.cacheAndResponse = overallTimings.total - overallTimings.validation - overallTimings.strategies;
+    
+    // Log comprehensive timing breakdown
+    console.log(`\n⏱️ === COMPREHENSIVE TIMING BREAKDOWN ===`);
+    console.log(`📋 Ticker Validation: ${(overallTimings.validation / 1000).toFixed(1)}s`);
+    console.log(`🧮 Strategy Calculations: ${(overallTimings.strategies / 1000).toFixed(1)}s`);
+    console.log(`💾 Cache & Response: ${(overallTimings.cacheAndResponse / 1000).toFixed(1)}s`);
+    console.log(`⏱️ Total API Time: ${(overallTimings.total / 1000).toFixed(1)}s`);
+    console.log(`📊 Processing Efficiency: ${(processedTickers.length / (overallTimings.total / 1000)).toFixed(1)} tickers/second`);
+    
     // Cache forever if end year is in the past, otherwise cache for 1 day (unless bypassed)
     if (!bypass_cache) {
       const currentYear = new Date().getFullYear();
@@ -2202,7 +2284,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await cache.set(cacheKey, results, cacheTime);
     }
 
-    res.status(200).json({ ...results, from_cache: false });
+    res.status(200).json({ 
+      ...results, 
+      from_cache: false,
+      timings: overallTimings
+    });
   } catch (error: any) {
     console.error('Backtest error:', error);
     res.status(500).json({ 
