@@ -811,7 +811,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                   <span className="text-sm text-gray-500">({endYear-1}-{endYear})</span>
                 </div>
                 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-200">
