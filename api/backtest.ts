@@ -1918,31 +1918,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       `${endYear >= 2025 ? 2024 : endYear}-12-31`
     ];
     
-    const allTickersForData = ['SPY', ...processedTickers.slice(0, 20)]; // Limit to prevent timeout
-    console.log(`📅 Fetching data for ${allTickersForData.length} tickers across ${essentialDates.length} key dates`);
-    
     let fetchedCount = 0;
-    let cacheHits = 0;
-    let cacheTotal = 0;
     
-    // Use Promise.all for parallel processing instead of sequential
-    const dataPromises = allTickersForData.flatMap(ticker =>
-      essentialDates.map(async (date) => {
-        try {
-          const result = await fetchStockData(ticker, date, bypass_cache, historicalData);
-          fetchedCount++;
-          const progress = Math.round((fetchedCount / (allTickersForData.length * essentialDates.length)) * 100);
-          console.log(`📊 Data fetch progress: ${fetchedCount}/${allTickersForData.length * essentialDates.length} (${progress}%) - ${ticker} ${date}`);
-          return result;
-        } catch (error) {
-          fetchedCount++;
-          console.log(`❌ Could not fetch ${ticker} data for ${date}:`, error);
-          return null;
-        }
-      })
-    );
-    
-    await Promise.all(dataPromises);
+    // For large portfolios, skip pre-fetching to avoid timeouts - data will be fetched on-demand
+    if (processedTickers.length > 30) {
+      console.log(`📊 Large portfolio (${processedTickers.length} tickers) - skipping pre-fetch, will fetch data on-demand during strategy calculations`);
+      console.log(`⚡ This approach optimizes for speed and prevents timeouts on large portfolios`);
+    } else {
+      const allTickersForData = ['SPY', ...processedTickers];
+      console.log(`📅 Fetching data for ${allTickersForData.length} tickers across ${essentialDates.length} key dates`);
+      
+      let cacheHits = 0;
+      let cacheTotal = 0;
+      
+      // Use Promise.all for parallel processing instead of sequential
+      const dataPromises = allTickersForData.flatMap(ticker =>
+        essentialDates.map(async (date) => {
+          try {
+            const result = await fetchStockData(ticker, date, bypass_cache, historicalData);
+            fetchedCount++;
+            const progress = Math.round((fetchedCount / (allTickersForData.length * essentialDates.length)) * 100);
+            console.log(`📊 Data fetch progress: ${fetchedCount}/${allTickersForData.length * essentialDates.length} (${progress}%) - ${ticker} ${date}`);
+            return result;
+          } catch (error) {
+            fetchedCount++;
+            console.log(`❌ Could not fetch ${ticker} data for ${date}:`, error);
+            return null;
+          }
+        })
+      );
+      
+      await Promise.all(dataPromises);
+    }
     
     console.log(`✅ DATA FETCHING COMPLETE: ${fetchedCount} data points fetched`);
     
@@ -2066,10 +2073,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
       
-      // If we have too many tickers, try with a reduced set
-      if (processedTickers.length > 25) {
-        console.log(`Timeout with ${processedTickers.length} tickers, trying with top 25 tickers...`);
-        const reducedTickers = processedTickers.slice(0, 25);
+      // If we have too many tickers, try with a reduced set only if timeout occurred
+      if (processedTickers.length > 40) {
+        console.log(`Timeout with ${processedTickers.length} tickers, trying with top 35 tickers...`);
+        const reducedTickers = processedTickers.slice(0, 35);
         
         try {
           [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
