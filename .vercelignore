@@ -34,7 +34,7 @@ yarn-error.log*
 
 # Cache directories
 .cache/
-cache/
+.next/cache/
 temp/
 
 # Build outputs (if any)
