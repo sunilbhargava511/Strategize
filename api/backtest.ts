@@ -196,6 +196,69 @@ async function tryFetchPriceForDate(ticker: string, date: string, apiToken: stri
   };
 }
 
+// Get all valid US exchange tickers from EODHD
+async function getValidUSTickers(bypassCache: boolean = false): Promise<Set<string> | null> {
+  try {
+    const cacheKey = 'valid-us-tickers-list';
+    
+    // Check cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached && cached.tickers) {
+        console.log(`Cache hit for US ticker list: ${cached.tickers.length} tickers`);
+        return new Set(cached.tickers);
+      }
+    }
+    
+    console.log('Fetching US ticker list from EODHD...');
+    
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured');
+      return null;
+    }
+    
+    const url = `https://eodhd.com/api/exchange-symbol-list/US?api_token=${EOD_API_KEY}&fmt=json`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error(`EODHD exchange list API error: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!Array.isArray(data)) {
+      console.error('Invalid response format from EODHD exchange list API');
+      return null;
+    }
+    
+    // Extract ticker symbols (Code field) and create a Set for fast lookup
+    const tickers = data.map(item => item.Code).filter(code => code && typeof code === 'string');
+    const tickerSet = new Set(tickers);
+    
+    console.log(`✅ Fetched ${tickerSet.size} valid US tickers from EODHD`);
+    
+    // Cache for 24 hours (86400 seconds)
+    try {
+      await cache.set(cacheKey, {
+        tickers: Array.from(tickerSet),
+        count: tickerSet.size,
+        cached_at: new Date().toISOString()
+      }, 86400);
+      console.log('Cached US ticker list for 24 hours');
+    } catch (cacheError) {
+      console.warn('Failed to cache US ticker list:', cacheError);
+    }
+    
+    return tickerSet;
+    
+  } catch (error) {
+    console.error('Error fetching US ticker list:', error);
+    return null;
+  }
+}
+
 // Get shares outstanding from EODHD fundamentals API
 async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
   try {
@@ -1373,66 +1436,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       validatedTickers.push(cleanTicker);
     }
     
-    // Now validate tickers have actual data by checking with EODHD
-    console.log(`\n📋 VALIDATING TICKERS WITH EODHD API...`);
+    // First, get the list of all valid US tickers from EODHD
+    console.log(`\n📋 VALIDATING TICKERS WITH EODHD EXCHANGE LIST...`);
+    const validUSTickerSet = await getValidUSTickers(bypass_cache);
+    
     const finalValidTickers: string[] = [];
     const problemTickers: string[] = [];
     
+    // Quick validation using exchange list first
     for (const ticker of validatedTickers) {
-      try {
-        // Check if ticker has any historical data by trying to fetch data for start year
-        const testDate = `${startYear}-01-02`;
-        const testData = await fetchStockData(ticker, testDate, true); // bypass cache for validation
+      // Check if ticker exists in the US exchange list
+      if (validUSTickerSet && validUSTickerSet.has(ticker)) {
+        // Ticker exists in exchange list - mark as valid immediately
+        const validationResult = tickerValidationResults.find(r => 
+          r.ticker === ticker || r.correctedTo === ticker
+        );
         
-        if (testData && testData.price > 0) {
-          // Ticker has data - now check data availability range
-          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
-          
-          // Try to get earliest and latest available data (quick check)
-          const earliestCheck = await fetchStockData(ticker, `${startYear - 5}-01-02`, true);
-          const latestCheck = await fetchStockData(ticker, `${endYear}-12-31`, true);
-          
-          finalValidTickers.push(ticker);
-          
-          const validationResult = tickerValidationResults.find(r => 
-            r.ticker === ticker || r.correctedTo === ticker
-          );
-          
-          if (validationResult) {
-            validationResult.hasHistoricalData = true;
-            validationResult.dataAvailableFrom = earliestCheck ? `${startYear - 5} or earlier` : `Around ${startYear}`;
-            validationResult.dataAvailableTo = latestCheck ? `${endYear} or later` : `Around ${endYear}`;
-          } else {
-            tickerValidationResults.push({
-              ticker: ticker,
-              status: 'valid',
-              message: `Valid ticker with historical data`,
-              hasHistoricalData: true
-            });
-          }
-        } else {
-          // No data found for this ticker
-          problemTickers.push(ticker);
-          
-          const validationResult = tickerValidationResults.find(r => 
-            r.ticker === ticker || r.correctedTo === ticker
-          );
-          
-          if (validationResult) {
-            validationResult.status = 'no_data';
-            validationResult.message = `No historical data found for ${ticker} in EODHD`;
-            validationResult.hasHistoricalData = false;
-          } else {
-            tickerValidationResults.push({
-              ticker: ticker,
-              status: 'no_data',
-              message: `No historical data found in EODHD`,
-              hasHistoricalData: false
-            });
-          }
+        if (!validationResult) {
+          tickerValidationResults.push({
+            ticker: ticker,
+            status: 'valid',
+            message: `Valid US exchange ticker`,
+            hasHistoricalData: true
+          });
         }
-      } catch (error) {
-        // API error or ticker doesn't exist
+        
+        finalValidTickers.push(ticker);
+      } else if (!validUSTickerSet) {
+        // Couldn't get exchange list, fall back to checking each ticker individually
+        finalValidTickers.push(ticker);
+      } else {
+        // Ticker not in exchange list - might be delisted or invalid
         problemTickers.push(ticker);
         
         const validationResult = tickerValidationResults.find(r => 
@@ -1441,15 +1475,56 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         if (validationResult) {
           validationResult.status = 'no_data';
-          validationResult.message = `Failed to fetch data: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          validationResult.message = `Ticker not found in US exchange list (might be delisted or invalid)`;
           validationResult.hasHistoricalData = false;
         } else {
           tickerValidationResults.push({
             ticker: ticker,
             status: 'no_data',
-            message: `Failed to fetch data from EODHD`,
+            message: `Not found in US exchange list`,
             hasHistoricalData: false
           });
+        }
+      }
+    }
+    
+    // For tickers not in exchange list but still want to check (could be recently delisted but have historical data)
+    if (problemTickers.length > 0 && bypass_cache) {
+      console.log(`\n🔍 CHECKING ${problemTickers.length} TICKERS NOT IN EXCHANGE LIST FOR HISTORICAL DATA...`);
+      
+      const tickersToRecheck = [...problemTickers];
+      problemTickers.length = 0; // Clear array
+      
+      for (const ticker of tickersToRecheck) {
+        try {
+          // Check if ticker has any historical data by trying to fetch data for start year
+          const testDate = `${startYear}-01-02`;
+          const testData = await fetchStockData(ticker, testDate, true);
+          
+          if (testData && testData.price > 0) {
+            // Ticker has historical data even though not in current exchange list (probably delisted)
+            finalValidTickers.push(ticker);
+            
+            const validationResult = tickerValidationResults.find(r => 
+              r.ticker === ticker || r.correctedTo === ticker
+            );
+            
+            if (validationResult) {
+              validationResult.status = 'valid';
+              validationResult.message = `Not in current exchange list but has historical data (possibly delisted)`;
+              validationResult.hasHistoricalData = true;
+            }
+            
+            console.log(`   ✓ ${ticker} - Has historical data (possibly delisted)`);
+          } else {
+            // No data found
+            problemTickers.push(ticker);
+            console.log(`   ✗ ${ticker} - No historical data found`);
+          }
+        } catch (error) {
+          // API error or ticker doesn't exist
+          problemTickers.push(ticker);
+          console.log(`   ✗ ${ticker} - Error checking data`);
         }
       }
     }
