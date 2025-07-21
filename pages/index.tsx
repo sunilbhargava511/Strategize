@@ -15,6 +15,7 @@ export default function Home() {
   const [isRunning, setIsRunning] = useState(false)
   const [results, setResults] = useState(null)
   const [showResults, setShowResults] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleTickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
@@ -23,6 +24,86 @@ export default function Home() {
     // Parse and validate tickers
     const tickerArray = value.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
     setDetectedTickers(tickerArray)
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      let uploadedTickers: string[] = []
+
+      // Handle different file formats
+      if (file.name.endsWith('.csv')) {
+        // Parse CSV - handle both comma and newline separated
+        uploadedTickers = text.split(/[,\n\r]/)
+          .map(ticker => ticker.trim().replace(/['"]/g, '').toUpperCase())
+          .filter(ticker => ticker && /^[A-Z]{1,5}(\.US)?$/.test(ticker))
+      } else if (file.name.endsWith('.txt')) {
+        // Parse TXT - handle both comma and newline separated
+        uploadedTickers = text.split(/[,\n\r\t]/)
+          .map(ticker => ticker.trim().toUpperCase())
+          .filter(ticker => ticker && /^[A-Z]{1,5}(\.US)?$/.test(ticker))
+      }
+
+      if (uploadedTickers.length > 0) {
+        const tickerString = uploadedTickers.join(', ')
+        setTickers(tickerString)
+        setDetectedTickers(uploadedTickers)
+        alert(`Successfully loaded ${uploadedTickers.length} tickers from file`)
+      } else {
+        alert('No valid tickers found in file. Please ensure the file contains valid stock symbols.')
+      }
+    }
+    reader.readAsText(file)
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleExportResults = () => {
+    if (!results) {
+      alert('No results to export. Please run an analysis first.')
+      return
+    }
+
+    // Create a comprehensive JSON export
+    const exportData = {
+      metadata: {
+        exportDate: new Date().toISOString(),
+        exportVersion: '1.0',
+        analysis: 'Portfolio Strategy Backtesting Results'
+      },
+      parameters: {
+        tickers: detectedTickers,
+        startYear: configuration.startYear,
+        endYear: configuration.endYear,
+        initialInvestment: configuration.initialInvestment,
+        analysisDate: new Date().toISOString()
+      },
+      results: results
+    }
+
+    // Create and download JSON file
+    const dataStr = JSON.stringify(exportData, null, 2)
+    const dataBlob = new Blob([dataStr], { type: 'application/json' })
+    const url = URL.createObjectURL(dataBlob)
+    
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `portfolio-analysis-${new Date().toISOString().split('T')[0]}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const handleRunAnalysis = async () => {
@@ -130,13 +211,36 @@ export default function Home() {
                     <h3 className="text-lg font-medium text-gray-900">Stock Tickers Input</h3>
                   </div>
                   
-                  <input
-                    type="text"
-                    value={tickers}
-                    onChange={handleTickerChange}
-                    placeholder="Enter tickers separated by commas..."
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={tickers}
+                      onChange={handleTickerChange}
+                      placeholder="Enter tickers separated by commas..."
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-500">or upload from file</span>
+                      <button
+                        onClick={handleUploadClick}
+                        className="flex items-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                        </svg>
+                        <span>Upload CSV/TXT</span>
+                      </button>
+                    </div>
+                    
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,.txt"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
                   
                   {detectedTickers.length > 0 && (
                     <div className="space-y-2">
@@ -295,7 +399,40 @@ export default function Home() {
                     </div>
                   </div>
                 ) : (
-                  <div className="w-full">
+                  <div className="w-full space-y-4">
+                    {/* Export Controls */}
+                    <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+                      <h3 className="text-xl font-semibold text-gray-900">Analysis Results</h3>
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={handleExportResults}
+                          className="flex items-center space-x-2 px-4 py-2 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg transition-colors text-sm font-medium"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Export JSON</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            // Trigger Excel download from ResultsDisplay component
+                            const excelButton = document.querySelector('[data-excel-download]') as HTMLButtonElement;
+                            if (excelButton) {
+                              excelButton.click();
+                            } else {
+                              alert('Excel export is available in the results overview section below.');
+                            }
+                          }}
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          <span>Export Excel</span>
+                        </button>
+                      </div>
+                    </div>
+                    
                     <ResultsDisplay results={results} />
                   </div>
                 )}

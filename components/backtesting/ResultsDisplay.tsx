@@ -480,6 +480,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button 
             onClick={handleExcelDownload}
+            data-excel-download
             className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
             <span>✅</span>
             <div className="text-left">
