@@ -514,6 +514,85 @@ async function getPriceAndMarketCapForYear(ticker: string, year: number, bypassC
 
 // Get market cap for a ticker at the start of a given year
 // First checks cache, then calculates from adjusted price × shares outstanding, returns null if unavailable
+// Get market cap directly from EODHD market-capitalization endpoint (useful for delisted stocks)
+async function getMarketCapFromAPI(ticker: string, date: string, bypassCache: boolean = false): Promise<number | null> {
+  try {
+    const cacheKey = `market-cap-api:${ticker}:${date}`;
+    
+    // Check cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await cache.get(cacheKey) as any;
+      if (cached && cached.market_cap) {
+        console.log(`Cache hit for API market cap ${ticker} ${date}: $${(cached.market_cap / 1000000000).toFixed(2)}B`);
+        return cached.market_cap;
+      }
+    }
+    
+    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+    if (!EOD_API_KEY) {
+      console.error('EODHD_API_TOKEN not configured');
+      return null;
+    }
+    
+    // Add .US exchange suffix if not present
+    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    
+    console.log(`Fetching market cap from EODHD API for ${tickerWithExchange} on ${date}`);
+    
+    // Use EODHD market-capitalization endpoint
+    const marketCapUrl = `https://eodhd.com/api/market-capitalization/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    const response = await fetch(marketCapUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.log(`EODHD market cap API error for ${tickerWithExchange}: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data || (Array.isArray(data) && data.length === 0)) {
+      console.log(`No market cap data from API for ${tickerWithExchange} on ${date}`);
+      return null;
+    }
+    
+    // Get the first record (should be the requested date or closest available)
+    const dayData = Array.isArray(data) ? data[0] : data;
+    
+    if (!dayData || !dayData.MarketCapitalization) {
+      console.log(`No MarketCapitalization field in API response for ${tickerWithExchange}`);
+      return null;
+    }
+    
+    const marketCap = dayData.MarketCapitalization;
+    
+    // Cache the result
+    try {
+      await cache.set(cacheKey, {
+        ticker,
+        date: dayData.Date || date,
+        market_cap: marketCap,
+        source: 'eodhd_market_cap_api',
+        cached_at: new Date().toISOString()
+      });
+      console.log(`✅ Cached API market cap for ${ticker} ${date}: $${(marketCap / 1000000000).toFixed(2)}B`);
+    } catch (cacheError) {
+      console.warn(`Failed to cache API market cap for ${ticker} ${date}:`, cacheError);
+    }
+    
+    console.log(`✅ Got market cap from API for ${ticker} ${date}: $${(marketCap / 1000000000).toFixed(2)}B`);
+    return marketCap;
+    
+  } catch (error) {
+    console.log(`Error getting market cap from API for ${ticker} on ${date}:`, error);
+    return null;
+  }
+}
+
 async function getMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
   try {
     const cacheKey = `market-cap:${ticker}:${year}`;
@@ -527,7 +606,7 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
       }
     }
     
-    console.log(`Cache miss for market cap ${ticker} ${year}, calculating from price × shares outstanding`);
+    console.log(`Cache miss for market cap ${ticker} ${year}, trying calculation from price × shares outstanding`);
     
     // Get both adjusted price and shares outstanding for the year
     const [adjustedPrice, sharesOutstanding] = await Promise.all([
@@ -535,48 +614,77 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
       getSharesOutstandingForYear(ticker, year, bypassCache)
     ]);
     
-    // Both values are required to calculate market cap
-    if (!adjustedPrice || !sharesOutstanding) {
+    // If we have both values, calculate market cap the traditional way
+    if (adjustedPrice && sharesOutstanding) {
+      const marketCap = adjustedPrice * sharesOutstanding;
+      
+      // Cache the calculated result
+      try {
+        await cache.set(cacheKey, {
+          ticker,
+          year,
+          market_cap: marketCap,
+          adjusted_price: adjustedPrice,
+          shares_outstanding: sharesOutstanding,
+          market_cap_billions: marketCap / 1000000000,
+          source: 'calculated_price_shares',
+          calculated_at: new Date().toISOString()
+        });
+        console.log(`✅ Cached calculated market cap for ${ticker} ${year}: $${(marketCap / 1000000000).toFixed(2)}B`);
+      } catch (cacheError) {
+        console.warn(`Failed to cache market cap for ${ticker} ${year}:`, cacheError);
+      }
+      
+      console.log(`✅ Calculated market cap for ${ticker} ${year}: $${adjustedPrice.toFixed(2)} × ${sharesOutstanding.toLocaleString()} = $${(marketCap / 1000000000).toFixed(2)}B`);
+      return marketCap;
+    }
+    
+    // Fallback: Try market cap API for delisted or problematic stocks
+    console.log(`⚠️ Cannot calculate market cap for ${ticker} ${year} (missing price or shares outstanding), trying market cap API fallback...`);
+    
+    // Check if the ticker is delisted
+    const tickerLists = await getValidUSTickers(bypassCache);
+    const isDelisted = tickerLists?.delisted.has(ticker) || tickerLists?.delisted.has(`${ticker}.US`);
+    
+    if (isDelisted) {
+      console.log(`📅 ${ticker} is delisted, using market cap API as primary source`);
+    } else {
       const missingData = [];
       if (!adjustedPrice) missingData.push('adjusted price');
       if (!sharesOutstanding) missingData.push('shares outstanding');
-      
-      // Special error message for stocks with price but no shares outstanding
-      if (adjustedPrice && !sharesOutstanding) {
-        console.error(`🚨 ERROR: ${ticker} ${year} has PRICE ($${adjustedPrice.toFixed(2)}) but NO SHARES OUTSTANDING from EODHD fundamentals API`);
-      } else {
-        console.log(`❌ Cannot calculate market cap for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
+      console.log(`❌ ${ticker} ${year} missing ${missingData.join(' and ')}, trying market cap API as fallback`);
+    }
+    
+    // Try to get market cap from the API (for start of year date)
+    const startOfYearDate = `${year}-01-01`;
+    const apiMarketCap = await getMarketCapFromAPI(ticker, startOfYearDate, bypassCache);
+    
+    if (apiMarketCap) {
+      // Cache the API result under the year-based key too
+      try {
+        await cache.set(cacheKey, {
+          ticker,
+          year,
+          market_cap: apiMarketCap,
+          source: 'eodhd_market_cap_api_fallback',
+          date_used: startOfYearDate,
+          cached_at: new Date().toISOString()
+        });
+        console.log(`✅ Cached API market cap fallback for ${ticker} ${year}: $${(apiMarketCap / 1000000000).toFixed(2)}B`);
+      } catch (cacheError) {
+        console.warn(`Failed to cache API market cap fallback for ${ticker} ${year}:`, cacheError);
       }
-      return null;
+      
+      return apiMarketCap;
     }
     
-    // Calculate market cap = price × shares outstanding
-    const marketCap = adjustedPrice * sharesOutstanding;
+    // If everything fails, log the error and return null
+    const missingData = [];
+    if (!adjustedPrice) missingData.push('adjusted price');
+    if (!sharesOutstanding) missingData.push('shares outstanding');
+    console.error(`🚨 COMPLETE FAILURE: ${ticker} ${year} - missing ${missingData.join(' and ')} AND market cap API returned no data`);
     
-    // Always cache the calculated result when successful (regardless of bypassCache flag)
-    try {
-      await cache.set(cacheKey, {
-        ticker,
-        year,
-        market_cap: marketCap,
-        adjusted_price: adjustedPrice,
-        shares_outstanding: sharesOutstanding,
-        market_cap_billions: marketCap / 1000000000,
-        formatted_market_cap: new Intl.NumberFormat('en-US', {
-          style: 'currency',
-          currency: 'USD',
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 0,
-        }).format(marketCap),
-        calculated_at: new Date().toISOString()
-      });
-      console.log(`✅ Cached calculated market cap for ${ticker} ${year}: $${(marketCap / 1000000000).toFixed(2)}B`);
-    } catch (cacheError) {
-      console.warn(`Failed to cache market cap for ${ticker} ${year}:`, cacheError);
-    }
-    
-    console.log(`✅ Calculated market cap for ${ticker} ${year}: $${adjustedPrice.toFixed(2)} × ${sharesOutstanding.toLocaleString()} = $${(marketCap / 1000000000).toFixed(2)}B`);
-    return marketCap;
+    return null;
     
   } catch (error) {
     console.error(`Error getting market cap for ${ticker} in ${year}:`, error);
