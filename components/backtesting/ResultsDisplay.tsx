@@ -9,6 +9,22 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
   
   if (!results) return null
 
+  // Check if ticker is an ETF
+  const isETF = (ticker: string): boolean => {
+    const etfTickers = new Set([
+      'SPY', 'SPY.US',
+      'QQQ', 'QQQ.US', 
+      'IWM', 'IWM.US',
+      'VTI', 'VTI.US',
+      'VOO', 'VOO.US',
+      'VEA', 'VEA.US',
+      'VWO', 'VWO.US',
+      'BND', 'BND.US',
+      'VNQ', 'VNQ.US'
+    ])
+    return etfTickers.has(ticker.toUpperCase())
+  }
+
   const formatPercentage = (value: number) => {
     return `${value.toFixed(2)}%`
   }
@@ -204,12 +220,20 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                                     ${priceData.price.toFixed(2)}
                                   </div>
                                   <div className="text-gray-600">
-                                    {/* Show market cap in billions */}
-                                    {priceData.marketCap ? `$${(priceData.marketCap / 1000000000).toFixed(1)}B` : '—'}
+                                    {/* Show market cap for stocks, ETF label for ETFs */}
+                                    {isETF(ticker) ? (
+                                      <span className="text-purple-600 font-medium">ETF</span>
+                                    ) : (
+                                      priceData.marketCap ? `$${(priceData.marketCap / 1000000000).toFixed(1)}B` : '—'
+                                    )}
                                   </div>
                                   <div className="text-gray-500 text-xs">
-                                    {/* Show shares outstanding in millions */}
-                                    {priceData.sharesOutstanding ? `${(priceData.sharesOutstanding / 1000000).toFixed(0)}M` : '—'}
+                                    {/* Show shares outstanding for stocks, Index Fund for ETFs */}
+                                    {isETF(ticker) ? (
+                                      <span className="text-purple-500">Index Fund</span>
+                                    ) : (
+                                      priceData.sharesOutstanding ? `${(priceData.sharesOutstanding / 1000000).toFixed(0)}M` : '—'
+                                    )}
                                   </div>
                                 </div>
                               ) : (
@@ -225,7 +249,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
               </table>
             </div>
             <div className="mt-3 text-xs text-gray-500">
-              Price, market cap, and shares outstanding data from historical records. Shows: Stock Price / Market Cap (Billions) / Shares Outstanding (Millions).
+              Price, market cap, and shares outstanding data from historical records. Shows: Stock Price / Market Cap (Billions) / Shares Outstanding (Millions). ETFs show "ETF" and "Index Fund" labels instead of market cap/shares data.
             </div>
           </div>
         </div>
