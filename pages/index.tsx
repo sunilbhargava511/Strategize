@@ -13,6 +13,11 @@ export default function Home() {
     useCache: true
   })
   const [isRunning, setIsRunning] = useState(false)
+  const [currentProgress, setCurrentProgress] = useState<{phase: string, detail: string, progress?: number}>({
+    phase: '',
+    detail: '',
+    progress: 0
+  })
   const [results, setResults] = useState(null)
   const [showResults, setShowResults] = useState(false)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
@@ -116,8 +121,29 @@ export default function Home() {
     setIsRunning(true)
     setResults(null)
     setShowResults(false)
+    setCurrentProgress({
+      phase: 'Starting Analysis',
+      detail: `Preparing to analyze ${detectedTickers.length} tickers...`,
+      progress: 5
+    })
 
     try {
+      // Simulate progress updates during the fetch
+      const progressUpdates = [
+        { phase: 'Validating Tickers', detail: 'Checking ticker symbols against market data...', progress: 15 },
+        { phase: 'Fetching Market Data', detail: 'Retrieving historical prices and market cap data...', progress: 35 },
+        { phase: 'Processing Strategies', detail: 'Calculating investment strategies...', progress: 60 },
+        { phase: 'Finalizing Results', detail: 'Preparing analysis results...', progress: 85 }
+      ];
+
+      let updateIndex = 0;
+      const progressInterval = setInterval(() => {
+        if (updateIndex < progressUpdates.length) {
+          setCurrentProgress(progressUpdates[updateIndex]);
+          updateIndex++;
+        }
+      }, 3000); // Update every 3 seconds
+
       const response = await fetch('/api/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -130,18 +156,33 @@ export default function Home() {
         })
       })
 
+      clearInterval(progressInterval);
+
       if (!response.ok) {
         throw new Error('Analysis failed')
       }
+
+      setCurrentProgress({
+        phase: 'Analysis Complete',
+        detail: 'Results ready! Loading interface...',
+        progress: 100
+      })
 
       const data = await response.json()
       setResults(data)
       setShowResults(true)
     } catch (error) {
       console.error('Analysis error:', error)
-      alert('Analysis failed. Please try again.')
+      setCurrentProgress({
+        phase: 'Error',
+        detail: 'Analysis failed. Please try again.',
+        progress: 0
+      })
+      setTimeout(() => alert('Analysis failed. Please try again.'), 100)
     } finally {
       setIsRunning(false)
+      // Clear progress after a short delay
+      setTimeout(() => setCurrentProgress({ phase: '', detail: '', progress: 0 }), 2000)
     }
   }
 
@@ -400,16 +441,53 @@ export default function Home() {
               <div className="bg-white rounded-2xl shadow-sm p-6 min-h-[600px] flex items-center justify-center">
                 {!showResults ? (
                   <div className="text-center space-y-4">
-                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
-                      <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                      </svg>
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-semibold text-gray-900 mb-2">Results</h3>
-                      <p className="text-gray-600">Run analysis to see strategy performance</p>
-                    </div>
-                  </div>
+                    {isRunning && currentProgress.phase ? (
+                      // Progress Display
+                      <div className="w-full max-w-md mx-auto space-y-6">
+                        <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <h3 className="text-xl font-semibold text-gray-900">{currentProgress.phase}</h3>
+                          <p className="text-gray-600">{currentProgress.detail}</p>
+                          
+                          {/* Progress Bar */}
+                          <div className="w-full bg-gray-200 rounded-full h-3">
+                            <div 
+                              className="bg-gradient-to-r from-blue-500 to-purple-600 h-3 rounded-full transition-all duration-500 ease-out"
+                              style={{ width: `${currentProgress.progress || 0}%` }}
+                            ></div>
+                          </div>
+                          
+                          <div className="flex justify-between items-center text-sm text-gray-500">
+                            <span>Progress</span>
+                            <span>{currentProgress.progress || 0}%</span>
+                          </div>
+                        </div>
+                        
+                        <div className="text-xs text-gray-400 mt-4">
+                          {detectedTickers.length > 25 ? (
+                            <p>⚡ Large portfolio detected - this may take longer than usual</p>
+                          ) : (
+                            <p>🚀 Analyzing your portfolio...</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      // Default Empty State
+                      <div className="space-y-4">
+                        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto">
+                          <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-semibold text-gray-900 mb-2">Results</h3>
+                          <p className="text-gray-600">Run analysis to see strategy performance</p>
+                        </div>
+                      </div>
+                    )}
                 ) : (
                   <div className="w-full space-y-4">
                     {/* Export Controls */}

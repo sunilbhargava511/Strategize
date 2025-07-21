@@ -2,6 +2,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
 
+// Utility function for formatting currency
+const formatCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
 interface StockData {
   ticker: string;
   date: string;
@@ -716,6 +726,9 @@ async function getMarketCapForYear(ticker: string, year: number, bypassCache: bo
 }
 
 
+// Global cache statistics
+let globalCacheStats = { hits: 0, misses: 0, total: 0 };
+
 async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false, historicalData?: Record<string, Record<string, any>>): Promise<StockData | null> {
   try {
     // Check cache first unless bypassed
@@ -723,7 +736,24 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
     if (!bypassCache) {
       const cached = await cache.get(cacheKey) as any;
       if (cached) {
-        console.log(`Cache hit for ${ticker} on ${date}`);
+        globalCacheStats.hits++;
+        globalCacheStats.total++;
+        const hitRate = Math.round((globalCacheStats.hits / globalCacheStats.total) * 100);
+        console.log(`📦 Cache hit for ${ticker} on ${date} (${hitRate}% hit rate: ${globalCacheStats.hits}/${globalCacheStats.total})`);
+        
+        // Store in historicalData if provided
+        if (historicalData) {
+          if (!historicalData[ticker]) historicalData[ticker] = {};
+          historicalData[ticker][date] = {
+            ticker: ticker,
+            date: cached.date || date,
+            price: cached.adjusted_close || cached.price,
+            adjusted_close: cached.adjusted_close || cached.price,
+            market_cap: cached.market_cap,
+            shares_outstanding: cached.shares_outstanding
+          };
+        }
+        
         return {
           ticker: ticker,
           date: cached.date || date,
@@ -735,7 +765,10 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
       }
     }
     
-    console.log(`Cache miss for ${ticker} on ${date}, fetching from EODHD`);
+    globalCacheStats.misses++;
+    globalCacheStats.total++;
+    const hitRate = Math.round((globalCacheStats.hits / globalCacheStats.total) * 100);
+    console.log(`🔍 Cache miss for ${ticker} on ${date}, fetching from EODHD (${hitRate}% hit rate: ${globalCacheStats.hits}/${globalCacheStats.total})`);
     
     // Add .US exchange suffix if not present
     const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
@@ -1103,8 +1136,12 @@ async function calculateStrategy(
   const initialMarketCaps: Record<string, number> = {};
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
+  console.log(`📊 Strategy: ${strategyType} ${rebalance ? 'Rebalanced' : 'Buy & Hold'}`);
+  console.log(`🔄 Fetching data for ${tickers.length} tickers from ${startDate} to ${endDate}`);
+  
   // Fetch all ticker data in parallel for better performance
-  const tickerPromises = tickers.map(async (ticker) => {
+  let processedCount = 0;
+  const tickerPromises = tickers.map(async (ticker, index) => {
     try {
       const [startData, endData] = await Promise.all([
         fetchStockData(ticker, startDate, bypassCache, historicalData),
@@ -1138,8 +1175,13 @@ async function calculateStrategy(
         }
       }
       // For rebalanced strategies, we'll handle availability year by year
+      
+      processedCount++;
+      const progress = Math.round((processedCount / tickers.length) * 100);
+      console.log(`     📈 Ticker ${processedCount}/${tickers.length} (${progress}%): ${ticker} processed`);
     } catch (error) {
-      console.error(`Error fetching data for ${ticker}:`, error);
+      processedCount++;
+      console.error(`     ❌ Error fetching data for ${ticker}:`, error);
       // Continue with other tickers
       tickerAvailability[ticker] = {
         hasStart: false,
@@ -1752,8 +1794,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     
     // Log validation summary
-    console.log(`\n✅ VALID TICKERS: ${finalValidTickers.length}`);
-    finalValidTickers.forEach(ticker => console.log(`   ✓ ${ticker}`));
+    console.log(`\n✅ TICKER VALIDATION COMPLETE: ${finalValidTickers.length}/${tickers.length} valid tickers`);
+    console.log(`📊 VALIDATION SUMMARY: ${finalValidTickers.length} valid, ${problemTickers.length} invalid`);
+    finalValidTickers.forEach((ticker, index) => console.log(`   ${index + 1}/${finalValidTickers.length} ✓ ${ticker}`));
     
     if (problemTickers.length > 0) {
       console.log(`\n❌ PROBLEM TICKERS: ${problemTickers.length}`);
@@ -1869,27 +1912,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const historicalData: Record<string, Record<string, any>> = {};
     
     // Pre-populate only essential data to avoid timeouts
-    console.log('Pre-fetching essential data only (start/end years for performance)...');
+    console.log(`\n🔄 DATA FETCHING PHASE: Fetching essential data for ${processedTickers.length} tickers...`);
     const essentialDates = [
       `${startYear}-01-02`,
       `${endYear >= 2025 ? 2024 : endYear}-12-31`
     ];
     
     const allTickersForData = ['SPY', ...processedTickers.slice(0, 20)]; // Limit to prevent timeout
+    console.log(`📅 Fetching data for ${allTickersForData.length} tickers across ${essentialDates.length} key dates`);
+    
+    let fetchedCount = 0;
+    let cacheHits = 0;
+    let cacheTotal = 0;
     
     // Use Promise.all for parallel processing instead of sequential
     const dataPromises = allTickersForData.flatMap(ticker =>
       essentialDates.map(async (date) => {
         try {
-          return await fetchStockData(ticker, date, bypass_cache, historicalData);
+          const result = await fetchStockData(ticker, date, bypass_cache, historicalData);
+          fetchedCount++;
+          const progress = Math.round((fetchedCount / (allTickersForData.length * essentialDates.length)) * 100);
+          console.log(`📊 Data fetch progress: ${fetchedCount}/${allTickersForData.length * essentialDates.length} (${progress}%) - ${ticker} ${date}`);
+          return result;
         } catch (error) {
-          console.log(`Could not fetch ${ticker} data for ${date}:`, error);
+          fetchedCount++;
+          console.log(`❌ Could not fetch ${ticker} data for ${date}:`, error);
           return null;
         }
       })
     );
     
     await Promise.all(dataPromises);
+    
+    console.log(`✅ DATA FETCHING COMPLETE: ${fetchedCount} data points fetched`);
     
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
@@ -1901,7 +1956,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
     });
     
-    console.log('Starting strategy calculations...');
+    console.log(`\n🚀 STRATEGY CALCULATION PHASE: Running 5 investment strategies...`);
+    console.log(`📊 Portfolio: ${processedTickers.length} tickers, ${startYear}-${endYear} (${endYear - startYear + 1} years)`);
+    console.log(`💰 Initial investment: ${formatCurrency(initialInvestment)}`);
     
     let equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark;
     
@@ -1909,24 +1966,68 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Calculate strategies with timeout protection
       const strategyTimeout = 45000; // 45 seconds max per strategy set
       const strategiesPromise = Promise.all([
-        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData).catch(err => {
-          console.error('Error in equalWeightBuyHold:', err);
+        // Strategy 1: Equal Weight Buy & Hold
+        (async () => {
+          console.log(`\n⚖️  [1/5] CALCULATING: Equal Weight Buy & Hold Strategy`);
+          console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
+          console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
+          console.log(`     ✅ COMPLETED: Equal Weight Buy & Hold - Final value: ${formatCurrency(result.finalValue)}`);
+          return result;
+        })().catch(err => {
+          console.error('❌ Error in equalWeightBuyHold:', err);
           throw err;
         }),
-        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData).catch(err => {
-          console.error('Error in marketCapBuyHold:', err);
+        
+        // Strategy 2: Market Cap Buy & Hold  
+        (async () => {
+          console.log(`\n📈 [2/5] CALCULATING: Market Cap Buy & Hold Strategy`);
+          console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
+          console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData);
+          console.log(`     ✅ COMPLETED: Market Cap Buy & Hold - Final value: ${formatCurrency(result.finalValue)}`);
+          return result;
+        })().catch(err => {
+          console.error('❌ Error in marketCapBuyHold:', err);
           throw err;
         }),
-        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData).catch(err => {
-          console.error('Error in equalWeightRebalanced:', err);
+        
+        // Strategy 3: Equal Weight Rebalanced
+        (async () => {
+          console.log(`\n🔄 [3/5] CALCULATING: Equal Weight Rebalanced Strategy`);
+          console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
+          console.log(`     🏦 Type: Rebalanced annually`);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData);
+          console.log(`     ✅ COMPLETED: Equal Weight Rebalanced - Final value: ${formatCurrency(result.finalValue)}`);
+          return result;
+        })().catch(err => {
+          console.error('❌ Error in equalWeightRebalanced:', err);
           throw err;
         }),
-        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData).catch(err => {
-          console.error('Error in marketCapRebalanced:', err);
+        
+        // Strategy 4: Market Cap Rebalanced
+        (async () => {
+          console.log(`\n📊 [4/5] CALCULATING: Market Cap Rebalanced Strategy`);
+          console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
+          console.log(`     🏦 Type: Rebalanced annually`);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData);
+          console.log(`     ✅ COMPLETED: Market Cap Rebalanced - Final value: ${formatCurrency(result.finalValue)}`);
+          return result;
+        })().catch(err => {
+          console.error('❌ Error in marketCapRebalanced:', err);
           throw err;
         }),
-        calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData).catch(err => {
-          console.error('Error in spyBenchmark:', err);
+        
+        // Strategy 5: SPY Benchmark
+        (async () => {
+          console.log(`\n🏛️  [5/5] CALCULATING: SPY Benchmark Strategy`);
+          console.log(`     📋 Benchmark: SPY ETF only`);
+          console.log(`     🏦 Type: Buy & Hold SPY`);
+          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
+          console.log(`     ✅ COMPLETED: SPY Benchmark - Final value: ${formatCurrency(result.finalValue)}`);
+          return result;
+        })().catch(err => {
+          console.error('❌ Error in spyBenchmark:', err);
           throw err;
         })
       ]);
@@ -1941,7 +2042,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         timeoutPromise
       ]) as any;
       
-      console.log('All strategy calculations completed successfully');
+      console.log(`\n🎉 ALL STRATEGY CALCULATIONS COMPLETED SUCCESSFULLY!`);
+      console.log(`📈 FINAL RESULTS SUMMARY:`);
+      console.log(`   ⚖️  Equal Weight Buy & Hold:    ${formatCurrency(equalWeightBuyHold.finalValue)} (${equalWeightBuyHold.totalReturn.toFixed(2)}%)`);
+      console.log(`   📈 Market Cap Buy & Hold:      ${formatCurrency(marketCapBuyHold.finalValue)} (${marketCapBuyHold.totalReturn.toFixed(2)}%)`);
+      console.log(`   🔄 Equal Weight Rebalanced:    ${formatCurrency(equalWeightRebalanced.finalValue)} (${equalWeightRebalanced.totalReturn.toFixed(2)}%)`);
+      console.log(`   📊 Market Cap Rebalanced:      ${formatCurrency(marketCapRebalanced.finalValue)} (${marketCapRebalanced.totalReturn.toFixed(2)}%)`);
+      console.log(`   🏛️  SPY Benchmark:              ${formatCurrency(spyBenchmark.finalValue)} (${spyBenchmark.totalReturn.toFixed(2)}%)`);
+      
+      // Find best performing strategy
+      const strategies = [
+        { name: 'Equal Weight Buy & Hold', value: equalWeightBuyHold.finalValue, icon: '⚖️' },
+        { name: 'Market Cap Buy & Hold', value: marketCapBuyHold.finalValue, icon: '📈' },
+        { name: 'Equal Weight Rebalanced', value: equalWeightRebalanced.finalValue, icon: '🔄' },
+        { name: 'Market Cap Rebalanced', value: marketCapRebalanced.finalValue, icon: '📊' },
+        { name: 'SPY Benchmark', value: spyBenchmark.finalValue, icon: '🏛️' }
+      ];
+      const topStrategy = strategies.reduce((a, b) => a.value > b.value ? a : b);
+      console.log(`🏆 TOP PERFORMER: ${topStrategy.icon} ${topStrategy.name} - ${formatCurrency(topStrategy.value)}`);
+      
+      console.log(`\n📊 CACHE STATISTICS: ${globalCacheStats.hits} hits, ${globalCacheStats.misses} misses (${Math.round((globalCacheStats.hits / globalCacheStats.total) * 100)}% hit rate)`);
+      console.log(`⏱️  READY TO SEND RESULTS TO FRONTEND...`);
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
       
