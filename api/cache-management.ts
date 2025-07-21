@@ -13,12 +13,13 @@ interface CachedAnalysis {
   expiresAt?: string;
   isPermanent: boolean;
   size?: number;
+  customName?: string;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -81,7 +82,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             isPermanent,
             size,
             cachedAt: result.parameters?.analysisDate || result.cached_at || 'Unknown',
-            expiresAt: isPermanent ? 'Never' : 'Within 24 hours'
+            expiresAt: isPermanent ? 'Never' : 'Within 24 hours',
+            customName: result.customName || null
           });
         } catch (parseError) {
           console.warn(`Failed to parse cache key: ${key}`, parseError);
@@ -285,6 +287,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       } else {
         return res.status(400).json({
           error: 'Invalid action. Supported actions: clear_all, clear_market_data, clear_everything, clear_by_ticker'
+        });
+      }
+
+    } else if (req.method === 'PUT') {
+      // Update cache entry name
+      const { key, customName } = req.body;
+      
+      if (!key || typeof key !== 'string') {
+        return res.status(400).json({
+          error: 'Missing or invalid cache key'
+        });
+      }
+
+      if (!key.startsWith('backtest:')) {
+        return res.status(400).json({
+          error: 'Invalid cache key - only backtest results can be renamed'
+        });
+      }
+
+      try {
+        console.log(`📝 Updating name for cache key: ${key}`);
+        
+        // Get the existing cache entry
+        const existingData = await cache.get(key);
+        if (!existingData) {
+          return res.status(404).json({
+            error: 'Cache entry not found'
+          });
+        }
+
+        // Update the cache entry with the new custom name
+        const updatedData = {
+          ...existingData,
+          customName: customName || null,
+          nameUpdatedAt: new Date().toISOString()
+        };
+
+        // Determine cache duration (preserve original expiration)
+        const keyParts = key.split(':');
+        const endYear = parseInt(keyParts[3]);
+        const currentYear = new Date().getFullYear();
+        const isPermanent = endYear < currentYear;
+        const cacheTime = isPermanent ? undefined : 86400;
+
+        // Save the updated entry
+        await cache.set(key, updatedData, cacheTime);
+        
+        console.log(`✅ Successfully updated name for ${key}: "${customName || 'Unnamed'}"`);
+        
+        return res.status(200).json({
+          success: true,
+          message: `Updated cache entry name to: "${customName || 'Unnamed'}"`,
+          key,
+          customName
+        });
+
+      } catch (error: any) {
+        console.error('Error updating cache entry name:', error);
+        return res.status(500).json({
+          error: 'Failed to update cache entry name',
+          message: error.message
         });
       }
 

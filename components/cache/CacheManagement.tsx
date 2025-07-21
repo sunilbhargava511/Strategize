@@ -11,6 +11,7 @@ interface CachedAnalysis {
   expiresAt?: string;
   isPermanent: boolean;
   size?: number;
+  customName?: string;
 }
 
 interface CacheManagementProps {
@@ -28,6 +29,8 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [confirmationInput, setConfirmationInput] = useState('')
   const [tickerInput, setTickerInput] = useState('')
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -212,6 +215,56 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
       alert(`Failed to clear ticker data: ${error.message}`)
       console.error('Clear by ticker error:', error)
     }
+  }
+
+  const updateCacheName = async (key: string, customName: string) => {
+    try {
+      const response = await fetch('/api/cache-management', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key, customName })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update the local state
+        setAnalyses(prev => prev.map(analysis => 
+          analysis.key === key 
+            ? { ...analysis, customName: customName || null }
+            : analysis
+        ))
+        setEditingKey(null)
+        setEditingName('')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update name')
+      }
+    } catch (error: any) {
+      alert(`Failed to update cache name: ${error.message}`)
+      console.error('Update name error:', error)
+    }
+  }
+
+  const startEditing = (analysis: CachedAnalysis) => {
+    setEditingKey(analysis.key)
+    setEditingName(analysis.customName || '')
+  }
+
+  const cancelEditing = () => {
+    setEditingKey(null)
+    setEditingName('')
+  }
+
+  const saveEdit = async () => {
+    if (editingKey) {
+      await updateCacheName(editingKey, editingName.trim())
+    }
+  }
+
+  const generateDefaultName = (analysis: CachedAnalysis) => {
+    const topTickers = analysis.tickers.slice(0, 3).join(', ')
+    const suffix = analysis.tickers.length > 3 ? ` +${analysis.tickers.length - 3}` : ''
+    return `${topTickers}${suffix} (${analysis.startYear}-${analysis.endYear})`
   }
 
   const toggleSelection = (key: string) => {
@@ -498,6 +551,7 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                         className="rounded border-gray-300"
                       />
                     </th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Name</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Analysis</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Period</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Investment</th>
@@ -516,6 +570,61 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                           onChange={() => toggleSelection(analysis.key)}
                           className="rounded border-gray-300"
                         />
+                      </td>
+                      <td className="px-4 py-3">
+                        {editingKey === analysis.key ? (
+                          <div className="flex items-center space-x-2">
+                            <input
+                              type="text"
+                              value={editingName}
+                              onChange={(e) => setEditingName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') saveEdit()
+                                if (e.key === 'Escape') cancelEditing()
+                              }}
+                              className="text-sm border border-blue-400 rounded px-2 py-1 min-w-0 flex-1"
+                              placeholder="Enter analysis name..."
+                              autoFocus
+                            />
+                            <button
+                              onClick={saveEdit}
+                              className="text-green-600 hover:text-green-800"
+                              title="Save"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={cancelEditing}
+                              className="text-red-600 hover:text-red-800"
+                              title="Cancel"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center space-x-2 group">
+                            <div className="font-medium text-gray-900 min-w-0 flex-1">
+                              {analysis.customName || (
+                                <span className="text-gray-500 italic">
+                                  {generateDefaultName(analysis)}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => startEditing(analysis)}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-blue-600 transition-opacity"
+                              title="Edit name"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div>
