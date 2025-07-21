@@ -64,6 +64,39 @@ export const cache = {
         error: error.message
       };
     }
+  },
+
+  // List all keys matching a pattern
+  keys: async (pattern: string): Promise<string[]> => {
+    if (!redis) return [];
+    try {
+      return await redis.keys(pattern);
+    } catch (error) {
+      console.error('Cache keys error:', error);
+      return [];
+    }
+  },
+
+  // Get multiple values at once
+  mget: async (keys: string[]): Promise<any[]> => {
+    if (!redis || keys.length === 0) return [];
+    try {
+      return await redis.mget(...keys);
+    } catch (error) {
+      console.error('Cache mget error:', error);
+      return [];
+    }
+  },
+
+  // Delete multiple keys at once
+  mdel: async (keys: string[]): Promise<number> => {
+    if (!redis || keys.length === 0) return 0;
+    try {
+      return await redis.del(...keys);
+    } catch (error) {
+      console.error('Cache mdel error:', error);
+      return 0;
+    }
   }
 };
 

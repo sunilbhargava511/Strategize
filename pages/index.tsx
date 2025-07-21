@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import Head from 'next/head'
 import Header from '../components/ui/Header'
 import ResultsDisplay from '../components/backtesting/ResultsDisplay'
+import CacheManagement from '../components/cache/CacheManagement'
 
 export default function Home() {
   const [tickers, setTickers] = useState<string>('AAPL, MSFT, GOOGL, AMZN, TSLA')
@@ -21,6 +22,7 @@ export default function Home() {
   const [results, setResults] = useState(null)
   const [showResults, setShowResults] = useState(false)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [showCacheManagement, setShowCacheManagement] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleTickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -406,9 +408,13 @@ export default function Home() {
                       </label>
                       
                       <div className="grid grid-cols-3 gap-3">
-                        <button className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors">
+                        <button 
+                          onClick={() => setShowCacheManagement(true)}
+                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-gray-50 hover:bg-gray-100 text-gray-700 rounded-lg transition-colors"
+                        >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                           </svg>
                           <span className="text-sm">View Cache</span>
                         </button>
@@ -568,6 +574,12 @@ export default function Home() {
           </div>
         </main>
       </div>
+
+      {/* Cache Management Modal */}
+      <CacheManagement 
+        isOpen={showCacheManagement} 
+        onClose={() => setShowCacheManagement(false)} 
+      />
     </>
   )
 }
