@@ -90,8 +90,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Sort by cache date (newest first)
       analyses.sort((a, b) => {
-        const dateA = new Date(a.cachedAt === 'Unknown' ? 0 : a.cachedAt);
-        const dateB = new Date(b.cachedAt === 'Unknown' ? 0 : b.cachedAt);
+        const dateA = new Date(a.cachedAt === 'Unknown' || !a.cachedAt ? 0 : a.cachedAt);
+        const dateB = new Date(b.cachedAt === 'Unknown' || !b.cachedAt ? 0 : b.cachedAt);
         return dateB.getTime() - dateA.getTime();
       });
 
