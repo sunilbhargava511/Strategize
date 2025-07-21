@@ -35,16 +35,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Debug logging
     console.log('Export data:', { startYear, endYear, initialInvestment, tickerCount: tickers.length, tickers: tickers.slice(0, 5) });
-    console.log('Results received for Excel export:', {
-      equalWeightBuyHold: results.equalWeightBuyHold?.finalValue,
-      marketCapBuyHold: results.marketCapBuyHold?.finalValue,
-      equalWeightRebalanced: results.equalWeightRebalanced?.finalValue,
-      marketCapRebalanced: results.marketCapRebalanced?.finalValue,
-      spyBenchmark: results.spyBenchmark?.finalValue
-    });
-    
-    // Create a simple Excel export based on the results
-    console.log('Creating Excel export from results data');
     
     // Generate year range
     const years: number[] = [];
@@ -54,18 +44,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Tab 1: Overview - Strategy comparison
     const overviewData = [
-      ['Strategies', startYear.toString(), endYear.toString(), 'Annualized'],
-      ['MC B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.marketCapBuyHold?.annualizedReturn || 0).toFixed(1)}%`],
-      ['MC', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.marketCapRebalanced?.annualizedReturn || 0).toFixed(1)}%`],
-      ['SPY', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.spyBenchmark?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.spyBenchmark?.annualizedReturn || 0).toFixed(1)}%`], // SPY benchmark
-      ['EQW', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightBuyHold?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightBuyHold?.annualizedReturn || 0).toFixed(1)}%`],
-      ['EQW B', `$${initialInvestment.toLocaleString()}.00`, `$${Math.floor(results.equalWeightRebalanced?.finalValue || initialInvestment).toLocaleString()}.00`, `${(results.equalWeightRebalanced?.annualizedReturn || 0).toFixed(1)}%`]
-    ];
-    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
-    XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
-
-    // Tab 2: Analysis Summary - Key metrics in tabular format
-    const summaryData = [
       ['Strategy', 'Start Value', 'End Value', 'Total Return', 'Annualized Return'],
       ['Market Cap Buy & Hold', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapBuyHold?.finalValue || initialInvestment).toLocaleString()}`, `${(results.marketCapBuyHold?.totalReturn || 0).toFixed(2)}%`, `${(results.marketCapBuyHold?.annualizedReturn || 0).toFixed(2)}%`],
       ['Market Cap Rebalanced', `$${initialInvestment.toLocaleString()}`, `$${Math.floor(results.marketCapRebalanced?.finalValue || initialInvestment).toLocaleString()}`, `${(results.marketCapRebalanced?.totalReturn || 0).toFixed(2)}%`, `${(results.marketCapRebalanced?.annualizedReturn || 0).toFixed(2)}%`],
@@ -80,167 +58,178 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ['Number of Stocks', tickers.length],
       ['Tickers', tickers.join(', ')]
     ];
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+    const overviewSheet = XLSX.utils.aoa_to_sheet(overviewData);
+    XLSX.utils.book_append_sheet(wb, overviewSheet, 'Overview');
 
-    // Tab 3: Portfolio Holdings - Detailed breakdown by strategy
-    const portfolioData = [
-      ['Portfolio Holdings Analysis'],
-      [],
-      ['Portfolio Composition'],
-      ['Total Stocks', tickers.length],
-      ['Investment Period', `${startYear} - ${endYear}`],
-      ['Initial Investment', `$${initialInvestment.toLocaleString()}`],
-      [],
-      ['Stock Tickers'],
-      ...tickers.map((ticker: string) => [ticker]),
-      [],
-      ['Holdings by Strategy (Year ' + startYear + ')']
-    ];
+    // Helper function to get all tickers and years from all strategies
+    const getAllTickersAndYears = () => {
+      const allTickers = new Set<string>();
+      const allYears = new Set<number>();
+      
+      const strategies = ['equalWeightBuyHold', 'marketCapBuyHold', 'equalWeightRebalanced', 'marketCapRebalanced', 'spyBenchmark'];
+      
+      strategies.forEach(strategyKey => {
+        const data = results[strategyKey];
+        if (data?.yearlyHoldings) {
+          Object.keys(data.yearlyHoldings).forEach(year => {
+            allYears.add(Number(year));
+            Object.keys(data.yearlyHoldings[year] || {}).forEach(ticker => {
+              allTickers.add(ticker);
+            });
+          });
+        }
+      });
+      
+      return {
+        tickers: Array.from(allTickers).sort(),
+        years: Array.from(allYears).sort()
+      };
+    };
 
-    // Add holdings data for each strategy
-    const strategiesWithData = [
-      { key: 'equalWeightBuyHold', name: 'Equal Weight Buy & Hold' },
-      { key: 'marketCapBuyHold', name: 'Market Cap Buy & Hold' },
-      { key: 'equalWeightRebalanced', name: 'Equal Weight Rebalanced' },
-      { key: 'marketCapRebalanced', name: 'Market Cap Rebalanced' },
-      { key: 'spyBenchmark', name: 'SPY Benchmark' }
-    ];
+    const { tickers: allTickers, years: allYears } = getAllTickersAndYears();
 
-    strategiesWithData.forEach(strategy => {
-      const strategyData = results[strategy.key];
-      if (strategyData?.yearlyHoldings && strategyData.yearlyHoldings[startYear]) {
-        portfolioData.push([]);
-        portfolioData.push([strategy.name]);
-        portfolioData.push(['Ticker', 'Weight %', 'Shares', 'Value']);
-        
-        const holdings = strategyData.yearlyHoldings[startYear];
-        Object.entries(holdings).forEach(([ticker, holding]: [string, any]) => {
-          portfolioData.push([
-            ticker,
-            `${(holding.weight * 100).toFixed(2)}%`,
-            Math.round(holding.shares),
-            `$${Math.round(holding.value).toLocaleString()}`
-          ]);
+    // Holdings Tab 1: Price Data
+    const createPriceSheet = () => {
+      const priceData = [['Ticker', ...allYears]];
+      
+      allTickers.forEach(ticker => {
+        const row = [ticker];
+        allYears.forEach(year => {
+          // Find price data from any strategy for this ticker/year
+          let price = null;
+          const strategies = ['equalWeightBuyHold', 'marketCapBuyHold', 'equalWeightRebalanced', 'marketCapRebalanced', 'spyBenchmark'];
+          
+          for (const strategyKey of strategies) {
+            const data = results[strategyKey];
+            if (data?.yearlyHoldings?.[year]?.[ticker]?.price) {
+              price = data.yearlyHoldings[year][ticker].price;
+              break;
+            }
+          }
+          
+          row.push(price ? `$${price.toFixed(2)}` : '—');
         });
-      }
-    });
+        priceData.push(row);
+      });
+      
+      return priceData;
+    };
 
-    const portfolioSheet = XLSX.utils.aoa_to_sheet(portfolioData);
-    XLSX.utils.book_append_sheet(wb, portfolioSheet, 'Holdings');
+    // Holdings Tab 2: Shares Outstanding Data
+    const createSharesOutstandingSheet = () => {
+      const sharesData = [['Ticker', ...allYears]];
+      
+      allTickers.forEach(ticker => {
+        const row = [ticker];
+        allYears.forEach(year => {
+          // Find shares outstanding data from any strategy for this ticker/year
+          let sharesOutstanding = null;
+          const strategies = ['equalWeightBuyHold', 'marketCapBuyHold', 'equalWeightRebalanced', 'marketCapRebalanced', 'spyBenchmark'];
+          
+          for (const strategyKey of strategies) {
+            const data = results[strategyKey];
+            if (data?.yearlyHoldings?.[year]?.[ticker]?.sharesOutstanding) {
+              sharesOutstanding = data.yearlyHoldings[year][ticker].sharesOutstanding;
+              break;
+            }
+          }
+          
+          row.push(sharesOutstanding ? `${(sharesOutstanding / 1000000).toFixed(0)}M` : '—');
+        });
+        sharesData.push(row);
+      });
+      
+      return sharesData;
+    };
 
-    // Helper function to create detailed strategy sheets
-    const createStrategySheet = (strategyKey: string, strategyName: string) => {
+    // Holdings Tab 3: Market Cap Data
+    const createMarketCapSheet = () => {
+      const marketCapData = [['Ticker', ...allYears]];
+      
+      allTickers.forEach(ticker => {
+        const row = [ticker];
+        allYears.forEach(year => {
+          // Find market cap data from any strategy for this ticker/year
+          let marketCap = null;
+          const strategies = ['equalWeightBuyHold', 'marketCapBuyHold', 'equalWeightRebalanced', 'marketCapRebalanced', 'spyBenchmark'];
+          
+          for (const strategyKey of strategies) {
+            const data = results[strategyKey];
+            if (data?.yearlyHoldings?.[year]?.[ticker]?.marketCap) {
+              marketCap = data.yearlyHoldings[year][ticker].marketCap;
+              break;
+            }
+          }
+          
+          row.push(marketCap ? `$${(marketCap / 1000000000).toFixed(1)}B` : '—');
+        });
+        marketCapData.push(row);
+      });
+      
+      return marketCapData;
+    };
+
+    // Create holdings sheets
+    const priceSheet = XLSX.utils.aoa_to_sheet(createPriceSheet());
+    XLSX.utils.book_append_sheet(wb, priceSheet, 'Prices');
+
+    const sharesOutstandingSheet = XLSX.utils.aoa_to_sheet(createSharesOutstandingSheet());
+    XLSX.utils.book_append_sheet(wb, sharesOutstandingSheet, 'Shares Outstanding');
+
+    const marketCapSheet = XLSX.utils.aoa_to_sheet(createMarketCapSheet());
+    XLSX.utils.book_append_sheet(wb, marketCapSheet, 'Market Cap');
+
+    // Strategy Sheets - Just position values by year
+    const createStrategyValueSheet = (strategyKey: string) => {
       const data = results[strategyKey];
-      if (!data) {
+      if (!data?.yearlyHoldings) {
         return [['No data available for this strategy']];
       }
 
-      const gain = data.finalValue - initialInvestment;
-      const duration = endYear - startYear;
-
-      const sheetData = [
-        [strategyName],
-        [],
-        ['Key Metrics'],
-        ['Total Return', `${data.totalReturn.toFixed(2)}%`],
-        ['Annualized Return', `${data.annualizedReturn.toFixed(2)}%`],
-        ['Final Value', `$${Math.floor(data.finalValue).toLocaleString()}`],
-        [],
-        ['Investment Details'],
-        ['Initial Investment', `$${initialInvestment.toLocaleString()}`],
-        ['Investment Period', `${startYear} - ${endYear}`],
-        ['Duration', `${duration} years`],
-        ['Total Gain/Loss', `$${Math.floor(gain).toLocaleString()}`],
-        ['Portfolio Tickers', tickers.join(', ')],
-        [],
-        ['Performance Analysis'],
-        ['Investment Growth', `${((data.finalValue / initialInvestment) * 100).toFixed(1)}% of original value`],
-        ['Average Annual Growth', `${data.annualizedReturn.toFixed(2)}% per year`],
-        []
-      ];
-
-      // Add yearly holdings data if available
-      if (data.yearlyHoldings && Object.keys(data.yearlyHoldings).length > 0) {
-        sheetData.push(['Yearly Holdings Breakdown']);
-        sheetData.push([]);
-        
-        // Get all years with data
-        const years = Object.keys(data.yearlyHoldings).map(Number).sort();
-        
-        if (years.length > 0) {
-          // Add header row with years
-          sheetData.push(['Ticker', ...years.map(year => `${year} Weight`), ...years.map(year => `${year} Shares`), ...years.map(year => `${year} Value`)]);
-          
-          // Get all tickers from any year
-          const allTickers = new Set<string>();
-          years.forEach(year => {
-            Object.keys(data.yearlyHoldings[year] || {}).forEach(ticker => allTickers.add(ticker));
-          });
-          
-          // Add data rows for each ticker
-          Array.from(allTickers).sort().forEach(ticker => {
-            const row = [ticker];
-            
-            // Add weights
-            years.forEach(year => {
-              const holding = data.yearlyHoldings[year]?.[ticker];
-              row.push(holding ? `${(holding.weight * 100).toFixed(2)}%` : 'N/A');
-            });
-            
-            // Add shares
-            years.forEach(year => {
-              const holding = data.yearlyHoldings[year]?.[ticker];
-              row.push(holding ? Math.round(holding.shares).toLocaleString() : 'N/A');
-            });
-            
-            // Add values
-            years.forEach(year => {
-              const holding = data.yearlyHoldings[year]?.[ticker];
-              row.push(holding ? `$${Math.round(holding.value).toLocaleString()}` : 'N/A');
-            });
-            
-            sheetData.push(row);
-          });
-        }
-        
-        sheetData.push([]);
-      }
-
-      sheetData.push(['Note']);
-      sheetData.push(['All calculations based on real market data from EODHD API']);
-      sheetData.push(['Data includes stock splits and dividend adjustments']);
-
-      return sheetData;
+      const strategyYears = Object.keys(data.yearlyHoldings).map(Number).sort();
+      const valueData = [['Ticker', ...strategyYears]];
+      
+      // Get all tickers for this strategy
+      const strategyTickers = new Set<string>();
+      strategyYears.forEach(year => {
+        Object.keys(data.yearlyHoldings[year] || {}).forEach(ticker => {
+          strategyTickers.add(ticker);
+        });
+      });
+      
+      Array.from(strategyTickers).sort().forEach(ticker => {
+        const row = [ticker];
+        strategyYears.forEach(year => {
+          const holding = data.yearlyHoldings[year]?.[ticker];
+          row.push(holding ? `$${Math.round(holding.value).toLocaleString()}` : '$0');
+        });
+        valueData.push(row);
+      });
+      
+      return valueData;
     };
 
-    // Individual Strategy Detail Sheets
-    const eqwBuyHoldData = createStrategySheet('equalWeightBuyHold', 'Equal Weight Buy & Hold Strategy');
-    const eqwBuyHoldSheet = XLSX.utils.aoa_to_sheet(eqwBuyHoldData);
-    XLSX.utils.book_append_sheet(wb, eqwBuyHoldSheet, 'EQW Buy & Hold');
+    // Create strategy sheets
+    const strategies = [
+      { key: 'equalWeightBuyHold', name: 'EQW Buy Hold' },
+      { key: 'marketCapBuyHold', name: 'MC Buy Hold' },
+      { key: 'equalWeightRebalanced', name: 'EQW Rebalanced' },
+      { key: 'marketCapRebalanced', name: 'MC Rebalanced' },
+      { key: 'spyBenchmark', name: 'SPY Benchmark' }
+    ];
 
-    const mcBuyHoldData = createStrategySheet('marketCapBuyHold', 'Market Cap Buy & Hold Strategy');
-    const mcBuyHoldSheet = XLSX.utils.aoa_to_sheet(mcBuyHoldData);
-    XLSX.utils.book_append_sheet(wb, mcBuyHoldSheet, 'MC Buy & Hold');
-
-    const eqwRebalData = createStrategySheet('equalWeightRebalanced', 'Equal Weight Rebalanced Strategy');
-    const eqwRebalSheet = XLSX.utils.aoa_to_sheet(eqwRebalData);
-    XLSX.utils.book_append_sheet(wb, eqwRebalSheet, 'EQW Rebalanced');
-
-    const mcRebalData = createStrategySheet('marketCapRebalanced', 'Market Cap Rebalanced Strategy');
-    const mcRebalSheet = XLSX.utils.aoa_to_sheet(mcRebalData);
-    XLSX.utils.book_append_sheet(wb, mcRebalSheet, 'MC Rebalanced');
-
-    const spyData = createStrategySheet('spyBenchmark', 'SPY Benchmark');
-    const spySheet = XLSX.utils.aoa_to_sheet(spyData);
-    XLSX.utils.book_append_sheet(wb, spySheet, 'SPY Benchmark');
+    strategies.forEach(strategy => {
+      const strategyData = createStrategyValueSheet(strategy.key);
+      const strategySheet = XLSX.utils.aoa_to_sheet(strategyData);
+      XLSX.utils.book_append_sheet(wb, strategySheet, strategy.name);
+    });
 
     // Generate Excel file
     const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
 
     // Set headers for file download
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="Portfolio Simulation Results-${new Date().toISOString().split('T')[0]}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename=\"Portfolio Analysis Results-${new Date().toISOString().split('T')[0]}.xlsx\"`);
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
