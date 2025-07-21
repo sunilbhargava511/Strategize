@@ -276,11 +276,6 @@ async function getValidUSTickers(bypassCache: boolean = false): Promise<{ active
 // Get shares outstanding from EODHD fundamentals API
 async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
   try {
-    // Special handling for ETFs like SPY - they don't have traditional balance sheet data
-    if (ticker.toUpperCase() === 'SPY' || ticker.toUpperCase() === 'SPY.US') {
-      console.log(`📊 Using known SPY shares outstanding (~900M shares for historical calculations)`);
-      return 900000000; // SPY typically has around 900M shares outstanding
-    }
     
     // Convert date string to Date object to find the target year
     const targetDate = new Date(date);
@@ -365,8 +360,30 @@ async function getSharesOutstanding(ticker: string, date: string, apiToken: stri
 
 // Get shares outstanding for a ticker at the start of a given year
 // First checks cache, then calls EODHD API, returns null if unavailable
+// Check if ticker is an ETF that doesn't need market cap calculations
+function isETF(ticker: string): boolean {
+  const etfTickers = new Set([
+    'SPY', 'SPY.US',
+    'QQQ', 'QQQ.US', 
+    'IWM', 'IWM.US',
+    'VTI', 'VTI.US',
+    'VOO', 'VOO.US',
+    'VEA', 'VEA.US',
+    'VWO', 'VWO.US',
+    'BND', 'BND.US',
+    'VNQ', 'VNQ.US'
+  ]);
+  return etfTickers.has(ticker.toUpperCase());
+}
+
 async function getSharesOutstandingForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
   try {
+    // ETFs don't have traditional shares outstanding in the same way as stocks
+    if (isETF(ticker)) {
+      console.log(`📊 Skipping shares outstanding for ETF ${ticker} - not applicable for ETFs`);
+      return null;
+    }
+    
     // Use January 2nd to avoid New Year's Day holiday
     const startOfYearDate = `${year}-01-02`;
     const cacheKey = `shares-outstanding:${ticker}:${year}`;
@@ -595,6 +612,12 @@ async function getMarketCapFromAPI(ticker: string, date: string, bypassCache: bo
 
 async function getMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<number | null> {
   try {
+    // ETFs don't have market cap in the traditional sense - they track an index
+    if (isETF(ticker)) {
+      console.log(`📊 Skipping market cap calculation for ETF ${ticker} - not applicable for ETFs`);
+      return null;
+    }
+    
     const cacheKey = `market-cap:${ticker}:${year}`;
     
     // Check cache first unless bypassed
