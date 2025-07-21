@@ -327,12 +327,16 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                     {Object.keys(data.yearlyHoldings).sort().map(year => (
                       <th key={year} className="text-center p-3 font-semibold">{year}</th>
                     ))}
+                    <th className="text-center p-3 font-semibold text-green-700">Absolute Gain</th>
+                    <th className="text-center p-3 font-semibold text-green-700">% of Total Gain</th>
                   </tr>
                   <tr className="border-b border-gray-200 text-xs text-gray-600">
                     <th className="text-left p-2">Weight / Shares / Value</th>
                     {Object.keys(data.yearlyHoldings).sort().map(year => (
                       <th key={year} className="text-center p-2">Weight / Shares / Value</th>
                     ))}
+                    <th className="text-center p-2 text-green-600">Final - Initial</th>
+                    <th className="text-center p-2 text-green-600">Contribution</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -343,7 +347,26 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                       Object.keys(yearData).forEach(ticker => allTickers.add(ticker))
                     })
                     
-                    return Array.from(allTickers).sort().map(ticker => (
+                    // Calculate gains for each ticker
+                    const tickerGains = Array.from(allTickers).map(ticker => {
+                      const years = Object.keys(data.yearlyHoldings).sort()
+                      const firstYear = years[0]
+                      const lastYear = years[years.length - 1]
+                      
+                      const initialValue = data.yearlyHoldings[firstYear]?.[ticker]?.value || 0
+                      const finalValue = data.yearlyHoldings[lastYear]?.[ticker]?.value || 0
+                      const absoluteGain = finalValue - initialValue
+                      
+                      return { ticker, absoluteGain, initialValue, finalValue }
+                    })
+                    
+                    // Calculate total portfolio gain
+                    const totalPortfolioGain = data.finalValue - (results.parameters?.initialInvestment || 1000000)
+                    
+                    // Sort by absolute gain (largest first)
+                    tickerGains.sort((a, b) => b.absoluteGain - a.absoluteGain)
+                    
+                    return tickerGains.map(({ ticker, absoluteGain }) => (
                       <tr key={ticker} className="border-b border-gray-100 hover:bg-white">
                         <td className="p-3 font-mono font-medium">{ticker}</td>
                         {Object.keys(data.yearlyHoldings).sort().map(year => {
@@ -368,6 +391,16 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                             </td>
                           )
                         })}
+                        <td className="p-3 text-center">
+                          <div className={`font-medium ${absoluteGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {absoluteGain >= 0 ? '+' : ''}{formatCurrency(absoluteGain)}
+                          </div>
+                        </td>
+                        <td className="p-3 text-center">
+                          <div className={`font-medium ${absoluteGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {totalPortfolioGain !== 0 ? `${((absoluteGain / totalPortfolioGain) * 100).toFixed(1)}%` : '—'}
+                          </div>
+                        </td>
                       </tr>
                     ))
                   })()}
@@ -375,7 +408,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
               </table>
             </div>
             <div className="mt-3 text-xs text-gray-500">
-              Each cell shows: Weight % / Number of Shares / Dollar Value
+              Each cell shows: Weight % / Number of Shares / Dollar Value. Sorted by absolute gain (largest first).
             </div>
           </div>
         )}
