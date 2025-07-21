@@ -1972,7 +1972,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const isLargePortfolioOptimized = false;
     
     overallTimings.validation = Date.now() - validationStart;
-    console.log(`\n📊 PORTFOLIO SIZE: ${finalValidTickers.length} tickers`);
+    console.log(`\n📊 PORTFOLIO SIZE ANALYSIS:`);
+    console.log(`   📥 Submitted: ${tickers.length} tickers`);
+    console.log(`   ✅ Validated: ${finalValidTickers.length} tickers`);
+    console.log(`   ❌ Invalid: ${tickers.length - finalValidTickers.length} tickers`);
     console.log(`⏱️ Ticker validation completed in ${(overallTimings.validation / 1000).toFixed(1)}s`);
     if (finalValidTickers.length > 100) {
       console.log(`⚡ Large portfolio detected - using optimized batching strategy`);
@@ -2129,8 +2132,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     
     console.log(`\n🚀 STRATEGY CALCULATION PHASE: Running 5 investment strategies...`);
-    console.log(`📊 Portfolio: ${processedTickers.length} tickers, ${startYear}-${endYear} (${endYear - startYear + 1} years)`);
-    console.log(`💰 Initial investment: ${formatCurrency(initialInvestment)}`);
+    console.log(`📊 ANALYSIS SCOPE:`);
+    console.log(`   🎯 Processing: ${processedTickers.length} tickers`);
+    console.log(`   📅 Period: ${startYear}-${endYear} (${endYear - startYear + 1} years)`);
+    console.log(`   💰 Initial investment: ${formatCurrency(initialInvestment)}`);
+    console.log(`   📋 Tickers: ${processedTickers.slice(0, 10).join(', ')}${processedTickers.length > 10 ? ` +${processedTickers.length - 10} more` : ''}`);
     
     let equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark;
     
@@ -2148,7 +2154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
           const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
-          console.log(`     ✅ COMPLETED: Equal Weight Buy & Hold - Final value: ${formatCurrency(result.finalValue)}`);
+          console.log(`     ✅ COMPLETED: Equal Weight Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           console.error('❌ Error in equalWeightBuyHold:', err);
@@ -2161,7 +2167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
           const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData);
-          console.log(`     ✅ COMPLETED: Market Cap Buy & Hold - Final value: ${formatCurrency(result.finalValue)}`);
+          console.log(`     ✅ COMPLETED: Market Cap Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           console.error('❌ Error in marketCapBuyHold:', err);
@@ -2174,7 +2180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Rebalanced annually`);
           const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData);
-          console.log(`     ✅ COMPLETED: Equal Weight Rebalanced - Final value: ${formatCurrency(result.finalValue)}`);
+          console.log(`     ✅ COMPLETED: Equal Weight Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           console.error('❌ Error in equalWeightRebalanced:', err);
@@ -2187,7 +2193,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Rebalanced annually`);
           const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData);
-          console.log(`     ✅ COMPLETED: Market Cap Rebalanced - Final value: ${formatCurrency(result.finalValue)}`);
+          console.log(`     ✅ COMPLETED: Market Cap Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           console.error('❌ Error in marketCapRebalanced:', err);
@@ -2200,7 +2206,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`     📋 Benchmark: SPY ETF only`);
           console.log(`     🏦 Type: Buy & Hold SPY`);
           const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
-          console.log(`     ✅ COMPLETED: SPY Benchmark - Final value: ${formatCurrency(result.finalValue)}`);
+          console.log(`     ✅ COMPLETED: SPY Benchmark - 1 ticker - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           console.error('❌ Error in spyBenchmark:', err);
@@ -2221,6 +2227,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       overallTimings.strategies = Date.now() - strategiesStart;
       console.log(`\n🎉 ALL STRATEGY CALCULATIONS COMPLETED SUCCESSFULLY!`);
       console.log(`⏱️ Strategy calculations completed in ${(overallTimings.strategies / 1000).toFixed(1)}s`);
+      console.log(`📊 FINAL TICKER COUNT: ${processedTickers.length} tickers successfully analyzed`);
       console.log(`📈 FINAL RESULTS SUMMARY:`);
       console.log(`   ⚖️  Equal Weight Buy & Hold:    ${formatCurrency(equalWeightBuyHold.finalValue)} (${equalWeightBuyHold.totalReturn.toFixed(2)}%)`);
       console.log(`   📈 Market Cap Buy & Hold:      ${formatCurrency(marketCapBuyHold.finalValue)} (${marketCapBuyHold.totalReturn.toFixed(2)}%)`);

@@ -839,13 +839,6 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                           </tr>
                         )
                       })}
-                      {data.length > 8 && (
-                        <tr>
-                          <td colSpan={3} className="p-2 text-center text-gray-500 text-xs">
-                            ... and {data.length - 8} more tickers
-                          </td>
-                        </tr>
-                      )}
                     </tbody>
                   </table>
                 </div>
