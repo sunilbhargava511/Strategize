@@ -820,7 +820,7 @@ async function calculateRebalancedStrategy(
         value: stockEndValue,
         price: stockPrices[ticker].start,
         marketCap: stockMarketCaps[ticker],
-        sharesOutstanding: sharesOutstanding
+        sharesOutstanding: sharesOutstanding || undefined
       };
       
       if (year === startYear || availableStocks.length > 1) {
@@ -1199,7 +1199,7 @@ async function calculateStrategy(
             value: currentValue,
             price: currentPrice,
             marketCap: stockMarketCaps[ticker],
-            sharesOutstanding: sharesOutstanding
+            sharesOutstanding: sharesOutstanding || undefined
           };
         }
       }
