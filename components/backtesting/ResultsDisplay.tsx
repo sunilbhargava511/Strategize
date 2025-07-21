@@ -43,32 +43,37 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
 
   // Generate chart data for performance comparison
   const generateChartData = () => {
-    const chartData: any[] = []
-    const startYear = results.parameters?.startYear || 2010
-    const endYear = results.parameters?.endYear || 2024
-    const initialInvestment = results.parameters?.initialInvestment || 1000000
+    try {
+      const chartData: any[] = []
+      const startYear = results.parameters?.startYear || 2010
+      const endYear = results.parameters?.endYear || 2024
+      const initialInvestment = results.parameters?.initialInvestment || 1000000
 
-    for (let year = startYear; year <= endYear; year++) {
-      const dataPoint: any = { year: year.toString() }
+      for (let year = startYear; year <= endYear; year++) {
+        const dataPoint: any = { year: year.toString() }
+        
+        strategies.forEach(strategy => {
+          const data = results[strategy.key]
+          if (data?.yearlyHoldings?.[year]) {
+            // Calculate portfolio value for this year
+            let totalValue = 0
+            Object.values(data.yearlyHoldings[year]).forEach((holding: any) => {
+              totalValue += holding.value || 0
+            })
+            dataPoint[strategy.key] = totalValue
+          } else if (year === startYear && data) {
+            dataPoint[strategy.key] = initialInvestment
+          }
+        })
+        
+        chartData.push(dataPoint)
+      }
       
-      strategies.forEach(strategy => {
-        const data = results[strategy.key]
-        if (data?.yearlyHoldings?.[year]) {
-          // Calculate portfolio value for this year
-          let totalValue = 0
-          Object.values(data.yearlyHoldings[year]).forEach((holding: any) => {
-            totalValue += holding.value || 0
-          })
-          dataPoint[strategy.key] = totalValue
-        } else if (year === startYear) {
-          dataPoint[strategy.key] = initialInvestment
-        }
-      })
-      
-      chartData.push(dataPoint)
+      return chartData
+    } catch (error) {
+      console.error('Error generating chart data:', error)
+      return []
     }
-    
-    return chartData
   }
 
   // Get top performing strategy

@@ -1089,7 +1089,13 @@ async function calculateStrategy(
   
   // For simplicity, we'll use January 2nd of each year (to avoid holidays)
   const startDate = `${startYear}-01-02`;
-  const endDate = `${endYear}-12-31`;
+  // For end date, use the last available date (avoid future dates)
+  const currentDate = new Date();
+  const maxEndDate = new Date(endYear, 11, 31); // December 31 of end year
+  const actualEndDate = maxEndDate > currentDate ? currentDate : maxEndDate;
+  const endDate = actualEndDate.toISOString().split('T')[0];
+  
+  console.log(`Strategy calculation dates: ${startDate} to ${endDate} (requested end year: ${endYear})`);
   
   // Fetch initial and final data including market caps for all tickers
   const initialPrices: Record<string, number> = {};
@@ -1098,8 +1104,9 @@ async function calculateStrategy(
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
   for (const ticker of tickers) {
-    const startData = await fetchStockData(ticker, startDate, bypassCache, historicalData);
-    const endData = await fetchStockData(ticker, endDate, bypassCache, historicalData);
+    try {
+      const startData = await fetchStockData(ticker, startDate, bypassCache, historicalData);
+      const endData = await fetchStockData(ticker, endDate, bypassCache, historicalData);
     
     tickerAvailability[ticker] = {
       hasStart: !!startData,
@@ -1128,6 +1135,14 @@ async function calculateStrategy(
       }
     }
     // For rebalanced strategies, we'll handle availability year by year
+    } catch (error) {
+      console.error(`Error fetching data for ${ticker}:`, error);
+      // Continue with other tickers
+      tickerAvailability[ticker] = {
+        hasStart: false,
+        hasEnd: false
+      };
+    }
   }
   
   // Determine which stocks to use based on strategy type
@@ -1872,13 +1887,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }))
     });
     
-    const [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData),
-      calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData),
-      calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData)
-    ]);
+    console.log('Starting strategy calculations...');
+    
+    let equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark;
+    
+    try {
+      [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
+        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData).catch(err => {
+          console.error('Error in equalWeightBuyHold:', err);
+          throw err;
+        }),
+        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData).catch(err => {
+          console.error('Error in marketCapBuyHold:', err);
+          throw err;
+        }),
+        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData).catch(err => {
+          console.error('Error in equalWeightRebalanced:', err);
+          throw err;
+        }),
+        calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData).catch(err => {
+          console.error('Error in marketCapRebalanced:', err);
+          throw err;
+        }),
+        calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData).catch(err => {
+          console.error('Error in spyBenchmark:', err);
+          throw err;
+        })
+      ]);
+      
+      console.log('All strategy calculations completed successfully');
+    } catch (strategyError) {
+      console.error('Strategy calculation failed:', strategyError);
+      throw strategyError;
+    }
 
     const results = {
       equalWeightBuyHold,
