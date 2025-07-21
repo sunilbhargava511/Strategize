@@ -2244,28 +2244,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
       
-      // If we have too many tickers, try with a reduced set only if timeout occurred
-      if (processedTickers.length > 40) {
-        console.log(`Timeout with ${processedTickers.length} tickers, trying with top 35 tickers...`);
-        const reducedTickers = processedTickers.slice(0, 35);
-        
-        try {
-          [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
-            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData),
-            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData),
-            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData),
-            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData),
-            calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData)
-          ]);
-          
-          console.log(`Successfully calculated with reduced ticker set (${reducedTickers.length} tickers)`);
-        } catch (fallbackError) {
-          console.error('Even reduced ticker calculation failed:', fallbackError);
-          throw new Error(`Backtest failed: Portfolio too large (${processedTickers.length} tickers). Please try with fewer tickers (max ~25 for optimal performance).`);
-        }
-      } else {
-        throw strategyError;
-      }
+      // User requested no arbitrary limits - just re-throw the error
+      console.log(`Strategy calculation failed for ${processedTickers.length} tickers. No fallback limits applied as requested.`);
+      throw strategyError;
     }
 
     const results = {
