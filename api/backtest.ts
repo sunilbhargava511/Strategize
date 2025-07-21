@@ -1139,58 +1139,77 @@ async function calculateStrategy(
   console.log(`📊 Strategy: ${strategyType} ${rebalance ? 'Rebalanced' : 'Buy & Hold'}`);
   console.log(`🔄 Fetching data for ${tickers.length} tickers from ${startDate} to ${endDate}`);
   
-  // Fetch all ticker data in parallel for better performance
+  // Batch process tickers to avoid overwhelming the API
+  const BATCH_SIZE = 10; // Process 10 tickers at a time
   let processedCount = 0;
-  const tickerPromises = tickers.map(async (ticker, index) => {
-    try {
-      const [startData, endData] = await Promise.all([
-        fetchStockData(ticker, startDate, bypassCache, historicalData),
-        fetchStockData(ticker, endDate, bypassCache, historicalData)
-      ]);
+  
+  console.log(`🔄 Processing ${tickers.length} tickers in batches of ${BATCH_SIZE}`);
+  
+  // Process tickers in batches
+  for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+    const batch = tickers.slice(i, i + BATCH_SIZE);
+    console.log(`📦 Processing batch ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(tickers.length/BATCH_SIZE)}: ${batch.join(', ')}`);
     
-      tickerAvailability[ticker] = {
-        hasStart: !!startData,
-        hasEnd: !!endData
-      };
+    const batchPromises = batch.map(async (ticker, index) => {
+      try {
+        const [startData, endData] = await Promise.all([
+          fetchStockData(ticker, startDate, bypassCache, historicalData),
+          fetchStockData(ticker, endDate, bypassCache, historicalData)
+        ]);
       
-      // For buy & hold strategies, we need both start and end prices
-      if (startData && endData) {
-        initialPrices[ticker] = startData.adjusted_close;
-        finalPrices[ticker] = endData.adjusted_close;
+        tickerAvailability[ticker] = {
+          hasStart: !!startData,
+          hasEnd: !!endData
+        };
         
-        // Only get market cap for market cap weighted strategies
-        if (strategyType === 'marketCap') {
-          const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
-          if (marketCap) {
-            initialMarketCaps[ticker] = marketCap;
-            console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+        // For buy & hold strategies, we need both start and end prices
+        if (startData && endData) {
+          initialPrices[ticker] = startData.adjusted_close;
+          finalPrices[ticker] = endData.adjusted_close;
+          
+          // Only get market cap for market cap weighted strategies
+          if (strategyType === 'marketCap') {
+            const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
+            if (marketCap) {
+              initialMarketCaps[ticker] = marketCap;
+              console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+            } else {
+              console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
+              // Set to 0 to indicate missing data
+              initialMarketCaps[ticker] = 0;
+            }
           } else {
-            console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
-            // Set to 0 to indicate missing data
-            initialMarketCaps[ticker] = 0;
+            // For equal weight strategies, market cap is not needed
+            initialMarketCaps[ticker] = 1; // Use 1 as placeholder since equal weight doesn't use market cap
           }
-        } else {
-          // For equal weight strategies, market cap is not needed
-          initialMarketCaps[ticker] = 1; // Use 1 as placeholder since equal weight doesn't use market cap
         }
+        // For rebalanced strategies, we'll handle availability year by year
+        
+        processedCount++;
+        const progress = Math.round((processedCount / tickers.length) * 100);
+        console.log(`     📈 Ticker ${processedCount}/${tickers.length} (${progress}%): ${ticker} processed`);
+      } catch (error) {
+        processedCount++;
+        console.error(`     ❌ Error fetching data for ${ticker}:`, error);
+        // Continue with other tickers
+        tickerAvailability[ticker] = {
+          hasStart: false,
+          hasEnd: false
+        };
       }
-      // For rebalanced strategies, we'll handle availability year by year
-      
-      processedCount++;
-      const progress = Math.round((processedCount / tickers.length) * 100);
-      console.log(`     📈 Ticker ${processedCount}/${tickers.length} (${progress}%): ${ticker} processed`);
-    } catch (error) {
-      processedCount++;
-      console.error(`     ❌ Error fetching data for ${ticker}:`, error);
-      // Continue with other tickers
-      tickerAvailability[ticker] = {
-        hasStart: false,
-        hasEnd: false
-      };
-    }
-  });
+    });
 
-  await Promise.all(tickerPromises);
+    // Wait for current batch to complete before starting next batch
+    await Promise.all(batchPromises);
+    
+    // Add small delay between batches to be respectful to the API
+    if (i + BATCH_SIZE < tickers.length) {
+      console.log(`⏱️  Batch ${Math.floor(i/BATCH_SIZE) + 1} complete, pausing briefly before next batch...`);
+      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms pause
+    }
+  }
+  
+  console.log(`✅ All ${tickers.length} tickers processed in ${Math.ceil(tickers.length/BATCH_SIZE)} batches`);
   
   // Determine which stocks to use based on strategy type
   let validTickers: string[];
@@ -1931,24 +1950,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let cacheHits = 0;
       let cacheTotal = 0;
       
-      // Use Promise.all for parallel processing instead of sequential
-      const dataPromises = allTickersForData.flatMap(ticker =>
-        essentialDates.map(async (date) => {
+      // Batch data fetching to avoid overwhelming the API
+      const DATA_BATCH_SIZE = 15; // Fetch data for 15 ticker-date combinations at a time
+      const allDataRequests = allTickersForData.flatMap(ticker =>
+        essentialDates.map(date => ({ ticker, date }))
+      );
+      
+      console.log(`📦 Processing ${allDataRequests.length} data requests in batches of ${DATA_BATCH_SIZE}`);
+      
+      for (let i = 0; i < allDataRequests.length; i += DATA_BATCH_SIZE) {
+        const batch = allDataRequests.slice(i, i + DATA_BATCH_SIZE);
+        console.log(`📊 Data batch ${Math.floor(i/DATA_BATCH_SIZE) + 1}/${Math.ceil(allDataRequests.length/DATA_BATCH_SIZE)}`);
+        
+        const batchPromises = batch.map(async ({ ticker, date }) => {
           try {
             const result = await fetchStockData(ticker, date, bypass_cache, historicalData);
             fetchedCount++;
-            const progress = Math.round((fetchedCount / (allTickersForData.length * essentialDates.length)) * 100);
-            console.log(`📊 Data fetch progress: ${fetchedCount}/${allTickersForData.length * essentialDates.length} (${progress}%) - ${ticker} ${date}`);
+            const progress = Math.round((fetchedCount / allDataRequests.length) * 100);
+            console.log(`📊 Data fetch progress: ${fetchedCount}/${allDataRequests.length} (${progress}%) - ${ticker} ${date}`);
             return result;
           } catch (error) {
             fetchedCount++;
             console.log(`❌ Could not fetch ${ticker} data for ${date}:`, error);
             return null;
           }
-        })
-      );
-      
-      await Promise.all(dataPromises);
+        });
+        
+        await Promise.all(batchPromises);
+        
+        // Brief pause between data batches
+        if (i + DATA_BATCH_SIZE < allDataRequests.length) {
+          await new Promise(resolve => setTimeout(resolve, 300)); // 300ms pause
+        }
+      }
     }
     
     console.log(`✅ DATA FETCHING COMPLETE: ${fetchedCount} data points fetched`);
