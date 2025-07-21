@@ -28,6 +28,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method === 'GET') {
+      // Check if requesting a specific cache entry
+      const { key } = req.query;
+      
+      if (key && typeof key === 'string') {
+        // Fetch specific cache entry
+        console.log(`📦 Fetching specific cache entry: ${key}`);
+        
+        if (!key.startsWith('backtest:')) {
+          return res.status(400).json({
+            error: 'Invalid cache key - only backtest results can be fetched'
+          });
+        }
+
+        const cachedData = await cache.get(key);
+        if (!cachedData) {
+          return res.status(404).json({
+            error: 'Cache entry not found'
+          });
+        }
+
+        console.log(`✅ Successfully retrieved cache entry: ${key}`);
+        return res.status(200).json({
+          success: true,
+          data: cachedData,
+          key
+        });
+      }
+      
       // List all cached analysis results
       console.log('📦 Fetching all cached analysis results...');
       

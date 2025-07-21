@@ -25,6 +25,38 @@ export default function Home() {
   const [showCacheManagement, setShowCacheManagement] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
+    console.log('Loading cached analysis:', cachedAnalysis)
+    
+    // Populate the form with cached analysis parameters
+    const tickerString = cachedAnalysis.tickers.join(', ')
+    setTickers(tickerString)
+    setDetectedTickers(cachedAnalysis.tickers)
+    setConfiguration({
+      startYear: cachedAnalysis.startYear,
+      endYear: cachedAnalysis.endYear,
+      initialInvestment: cachedAnalysis.initialInvestment,
+      useCache: true
+    })
+
+    // If we have the cached data, load it directly into results
+    if (cachedAnalysis.cachedData) {
+      setResults(cachedAnalysis.cachedData)
+      setShowResults(true)
+      
+      // Show success message
+      const name = cachedAnalysis.customName || `Analysis from ${cachedAnalysis.startYear}-${cachedAnalysis.endYear}`
+      setCurrentProgress({
+        phase: 'Loaded from Cache',
+        detail: `Successfully loaded "${name}" with ${cachedAnalysis.tickers.length} tickers`,
+        progress: 100
+      })
+      
+      // Clear progress after delay
+      setTimeout(() => setCurrentProgress({ phase: '', detail: '', progress: 0 }), 3000)
+    }
+  }
+
   const handleTickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value
     setTickers(value)
@@ -578,7 +610,8 @@ export default function Home() {
       {/* Cache Management Modal */}
       <CacheManagement 
         isOpen={showCacheManagement} 
-        onClose={() => setShowCacheManagement(false)} 
+        onClose={() => setShowCacheManagement(false)}
+        onSelectAnalysis={handleLoadCachedAnalysis}
       />
     </>
   )

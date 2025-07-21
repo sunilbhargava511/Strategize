@@ -12,14 +12,16 @@ interface CachedAnalysis {
   isPermanent: boolean;
   size?: number;
   customName?: string;
+  cachedData?: any;
 }
 
 interface CacheManagementProps {
   isOpen: boolean;
   onClose: () => void;
+  onSelectAnalysis?: (analysis: CachedAnalysis) => void;
 }
 
-export default function CacheManagement({ isOpen, onClose }: CacheManagementProps) {
+export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: CacheManagementProps) {
   const [analyses, setAnalyses] = useState<CachedAnalysis[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set())
@@ -265,6 +267,27 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
     const topTickers = analysis.tickers.slice(0, 3).join(', ')
     const suffix = analysis.tickers.length > 3 ? ` +${analysis.tickers.length - 3}` : ''
     return `${topTickers}${suffix} (${analysis.startYear}-${analysis.endYear})`
+  }
+
+  const loadAnalysis = async (analysis: CachedAnalysis) => {
+    if (!onSelectAnalysis) return
+    
+    try {
+      const response = await fetch(`/api/cache-management?key=${encodeURIComponent(analysis.key)}`)
+      if (response.ok) {
+        const { data } = await response.json()
+        onSelectAnalysis({
+          ...analysis,
+          cachedData: data
+        })
+        onClose()
+      } else {
+        throw new Error('Failed to load cached analysis')
+      }
+    } catch (error) {
+      alert('Failed to load analysis. It may have expired.')
+      console.error('Load analysis error:', error)
+    }
   }
 
   const toggleSelection = (key: string) => {
@@ -558,6 +581,7 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Cached</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Expires</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Size</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -662,6 +686,19 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {formatSize(analysis.size || 0)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => loadAnalysis(analysis)}
+                          className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                          title="Load this analysis"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                          </svg>
+                          <span>Load</span>
+                        </button>
                       </td>
                     </tr>
                   ))}
