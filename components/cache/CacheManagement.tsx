@@ -232,7 +232,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
         // Update the local state
         setAnalyses(prev => prev.map(analysis => 
           analysis.key === key 
-            ? { ...analysis, customName: customName || null }
+            ? { ...analysis, customName: customName || undefined }
             : analysis
         ))
         setEditingKey(null)

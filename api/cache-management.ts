@@ -111,7 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             size,
             cachedAt: result.parameters?.analysisDate || result.cached_at || 'Unknown',
             expiresAt: isPermanent ? 'Never' : 'Within 24 hours',
-            customName: result.customName || null
+            customName: result.customName || undefined
           });
         } catch (parseError) {
           console.warn(`Failed to parse cache key: ${key}`, parseError);
@@ -348,7 +348,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Update the cache entry with the new custom name
         const updatedData = {
           ...existingData,
-          customName: customName || null,
+          customName: customName || undefined,
           nameUpdatedAt: new Date().toISOString()
         };
 
