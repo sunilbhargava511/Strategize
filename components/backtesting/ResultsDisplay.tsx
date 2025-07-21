@@ -6,6 +6,8 @@ interface ResultsDisplayProps {
 
 export default function ResultsDisplay({ results }: ResultsDisplayProps) {
   const [activeTab, setActiveTab] = useState('overview')
+  const [sortBy, setSortBy] = useState<'ticker' | 'gains'>('gains')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   
   if (!results) return null
 
@@ -318,25 +320,65 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
         {/* Yearly Holdings Breakdown */}
         {data.yearlyHoldings && Object.keys(data.yearlyHoldings).length > 0 && (
           <div className="bg-gray-50 rounded-lg p-6">
-            <h4 className="font-semibold text-gray-900 mb-4">Yearly Holdings Breakdown</h4>
-            <div className="overflow-x-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-semibold text-gray-900">Yearly Holdings Breakdown</h4>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-600">Sort by:</span>
+                <button
+                  onClick={() => {
+                    if (sortBy === 'ticker') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                    } else {
+                      setSortBy('ticker')
+                      setSortOrder('asc')
+                    }
+                  }}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    sortBy === 'ticker' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Ticker {sortBy === 'ticker' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </button>
+                <button
+                  onClick={() => {
+                    if (sortBy === 'gains') {
+                      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')
+                    } else {
+                      setSortBy('gains')
+                      setSortOrder('desc')
+                    }
+                  }}
+                  className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                    sortBy === 'gains' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  Gains {sortBy === 'gains' && (sortOrder === 'asc' ? '↑' : '↓')}
+                </button>
+              </div>
+            </div>
+            
+            <div className="overflow-auto max-h-[500px]">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="sticky top-0 bg-white shadow-sm z-10">
                   <tr className="border-b-2 border-gray-300">
-                    <th className="text-left p-3 font-semibold">Ticker</th>
+                    <th className="sticky left-0 bg-white text-left p-3 font-semibold border-r border-gray-200 z-20">Ticker</th>
                     {Object.keys(data.yearlyHoldings).sort().map(year => (
-                      <th key={year} className="text-center p-3 font-semibold">{year}</th>
+                      <th key={year} className="text-center p-3 font-semibold min-w-[120px]">{year}</th>
                     ))}
-                    <th className="text-center p-3 font-semibold text-green-700">Absolute Gain</th>
-                    <th className="text-center p-3 font-semibold text-green-700">% of Total Gain</th>
+                    <th className="text-center p-3 font-semibold text-green-700 min-w-[120px]">Absolute Gain</th>
+                    <th className="text-center p-3 font-semibold text-green-700 min-w-[140px]">Cumulative %</th>
                   </tr>
                   <tr className="border-b border-gray-200 text-xs text-gray-600">
-                    <th className="text-left p-2">Weight / Shares / Value</th>
+                    <th className="sticky left-0 bg-white text-left p-2 border-r border-gray-200 z-20">Stock Symbol</th>
                     {Object.keys(data.yearlyHoldings).sort().map(year => (
                       <th key={year} className="text-center p-2">Weight / Shares / Value</th>
                     ))}
                     <th className="text-center p-2 text-green-600">Final - Initial</th>
-                    <th className="text-center p-2 text-green-600">Contribution</th>
+                    <th className="text-center p-2 text-green-600">Running Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -363,52 +405,70 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                     // Calculate total portfolio gain
                     const totalPortfolioGain = data.finalValue - (results.parameters?.initialInvestment || 1000000)
                     
-                    // Sort by absolute gain (largest first)
-                    tickerGains.sort((a, b) => b.absoluteGain - a.absoluteGain)
+                    // Sort based on current sort settings
+                    if (sortBy === 'ticker') {
+                      tickerGains.sort((a, b) => {
+                        const comparison = a.ticker.localeCompare(b.ticker)
+                        return sortOrder === 'asc' ? comparison : -comparison
+                      })
+                    } else {
+                      tickerGains.sort((a, b) => {
+                        const comparison = a.absoluteGain - b.absoluteGain
+                        return sortOrder === 'asc' ? comparison : -comparison
+                      })
+                    }
                     
-                    return tickerGains.map(({ ticker, absoluteGain }) => (
-                      <tr key={ticker} className="border-b border-gray-100 hover:bg-white">
-                        <td className="p-3 font-mono font-medium">{ticker}</td>
-                        {Object.keys(data.yearlyHoldings).sort().map(year => {
-                          const holding = data.yearlyHoldings[year]?.[ticker]
-                          return (
-                            <td key={year} className="p-3 text-center text-xs">
-                              {holding ? (
-                                <div className="space-y-1">
-                                  <div className="font-medium text-blue-600">
-                                    {(holding.weight * 100).toFixed(1)}%
+                    // Calculate cumulative percentages
+                    let cumulativePercentage = 0
+                    
+                    return tickerGains.map(({ ticker, absoluteGain }, index) => {
+                      const individualPercentage = totalPortfolioGain !== 0 ? (absoluteGain / totalPortfolioGain) * 100 : 0
+                      cumulativePercentage += individualPercentage
+                      
+                      return (
+                        <tr key={ticker} className="border-b border-gray-100 hover:bg-white">
+                          <td className="sticky left-0 bg-white p-3 font-mono font-medium border-r border-gray-200 z-10">{ticker}</td>
+                          {Object.keys(data.yearlyHoldings).sort().map(year => {
+                            const holding = data.yearlyHoldings[year]?.[ticker]
+                            return (
+                              <td key={year} className="p-3 text-center text-xs">
+                                {holding ? (
+                                  <div className="space-y-1">
+                                    <div className="font-medium text-blue-600">
+                                      {(holding.weight * 100).toFixed(1)}%
+                                    </div>
+                                    <div className="text-gray-600">
+                                      {Math.round(holding.shares).toLocaleString()}
+                                    </div>
+                                    <div className="text-gray-800 font-medium">
+                                      {formatCurrency(holding.value)}
+                                    </div>
                                   </div>
-                                  <div className="text-gray-600">
-                                    {Math.round(holding.shares).toLocaleString()}
-                                  </div>
-                                  <div className="text-gray-800 font-medium">
-                                    {formatCurrency(holding.value)}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="text-gray-400">—</div>
-                              )}
-                            </td>
-                          )
-                        })}
-                        <td className="p-3 text-center">
-                          <div className={`font-medium ${absoluteGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {absoluteGain >= 0 ? '+' : ''}{formatCurrency(absoluteGain)}
-                          </div>
-                        </td>
-                        <td className="p-3 text-center">
-                          <div className={`font-medium ${absoluteGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {totalPortfolioGain !== 0 ? `${((absoluteGain / totalPortfolioGain) * 100).toFixed(1)}%` : '—'}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
+                                ) : (
+                                  <div className="text-gray-400">—</div>
+                                )}
+                              </td>
+                            )
+                          })}
+                          <td className="p-3 text-center">
+                            <div className={`font-medium ${absoluteGain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {absoluteGain >= 0 ? '+' : ''}{formatCurrency(absoluteGain)}
+                            </div>
+                          </td>
+                          <td className="p-3 text-center">
+                            <div className={`font-medium ${cumulativePercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {totalPortfolioGain !== 0 ? `${cumulativePercentage.toFixed(1)}%` : '—'}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })
                   })()}
                 </tbody>
               </table>
             </div>
             <div className="mt-3 text-xs text-gray-500">
-              Each cell shows: Weight % / Number of Shares / Dollar Value. Sorted by absolute gain (largest first).
+              Ticker column and header row are frozen for easy navigation. Cumulative % shows running total of gains contribution.
             </div>
           </div>
         )}
