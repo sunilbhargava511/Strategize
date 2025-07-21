@@ -15,6 +15,7 @@ export default function Home() {
   const [isRunning, setIsRunning] = useState(false)
   const [results, setResults] = useState(null)
   const [showResults, setShowResults] = useState(false)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleTickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -186,10 +187,10 @@ export default function Home() {
           </div>
         </div>
         
-        <main className="container mx-auto px-4 py-8 max-w-6xl">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <main className="container mx-auto px-4 py-8 max-w-7xl">
+          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
             {/* Left Column - Setup */}
-            <div className="space-y-6">
+            <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card */}
               <div className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="flex items-center space-x-3 mb-6">
@@ -384,7 +385,18 @@ export default function Home() {
             </div>
 
             {/* Right Column - Results */}
-            <div className="space-y-6">
+            <div className="space-y-6 relative">
+              {/* Collapse Toggle Button */}
+              <button
+                onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+                className="absolute top-2 left-2 z-10 flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-colors text-sm"
+              >
+                <svg className={`w-4 h-4 transition-transform ${leftPanelCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <span>{leftPanelCollapsed ? 'Show Setup' : 'Hide Setup'}</span>
+              </button>
+              
               <div className="bg-white rounded-2xl shadow-sm p-6 min-h-[600px] flex items-center justify-center">
                 {!showResults ? (
                   <div className="text-center space-y-4">
@@ -402,7 +414,9 @@ export default function Home() {
                   <div className="w-full space-y-4">
                     {/* Export Controls */}
                     <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                      <h3 className="text-xl font-semibold text-gray-900">Analysis Results</h3>
+                      <h3 className="text-xl font-semibold text-gray-900">
+                        Analysis Results {leftPanelCollapsed && <span className="text-sm font-normal text-gray-500">(Full Screen)</span>}
+                      </h3>
                       <div className="flex items-center space-x-3">
                         <button
                           onClick={handleExportResults}
