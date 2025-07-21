@@ -711,7 +711,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                                       {(holding.weight * 100).toFixed(1)}%
                                     </div>
                                     <div className="text-gray-600">
-                                      {Math.round(holding.shares).toLocaleString()}
+                                      {holding.shares ? Math.round(holding.shares).toLocaleString() : '0'}
                                     </div>
                                     <div className="text-gray-800 font-medium">
                                       {formatCurrency(holding.value)}

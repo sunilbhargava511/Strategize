@@ -535,7 +535,7 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
-                        ${analysis.initialInvestment.toLocaleString()}
+                        ${analysis.initialInvestment ? analysis.initialInvestment.toLocaleString() : '0'}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {formatDate(analysis.cachedAt || 'Unknown')}
