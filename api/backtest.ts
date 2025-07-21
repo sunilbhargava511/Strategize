@@ -28,6 +28,8 @@ interface StrategyResult {
   yearlyValues: Record<number, number>;
   yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>;
   portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }>;
+  cacheStats?: any;
+  timings?: Record<string, number>;
 }
 
 async function fetchMarketCapData(ticker: string, date: string, bypassCache: boolean = false): Promise<StockData | null> {
@@ -523,12 +525,12 @@ async function getAdjustedPriceForYear(ticker: string, year: number, bypassCache
 
 // Helper function to get both price and market cap for a ticker in a given year
 // Returns null if either value is unavailable  
-async function getPriceAndMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false): Promise<{ price: number; marketCap: number } | null> {
+async function getPriceAndMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<{ price: number; marketCap: number } | null> {
   try {
     // Get both values in parallel for efficiency
     const [price, marketCap] = await Promise.all([
-      getAdjustedPriceForYear(ticker, year, bypassCache),
-      getMarketCapForYear(ticker, year, bypassCache)
+      getAdjustedPriceForYear(ticker, year, bypassCache, cacheStats),
+      getMarketCapForYear(ticker, year, bypassCache, cacheStats)
     ]);
     
     if (price && marketCap) {
@@ -961,7 +963,8 @@ async function calculateRebalancedStrategy(
   initialInvestment: number,
   strategyType: 'equalWeight' | 'marketCap',
   bypassCache: boolean = false,
-  historicalData?: Record<string, Record<string, any>>
+  historicalData?: Record<string, Record<string, any>>,
+  cacheStats?: any
 ): Promise<{ finalValue: number; yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>; yearlyValues: Record<number, number>; }> {
   console.log(`🔄 Rebalanced ${strategyType} strategy: ${startYear}-${endYear}`);
   
@@ -1319,7 +1322,7 @@ async function calculateStrategy(
     // REBALANCED STRATEGY: Year-by-year simulation with dynamic stock addition
     console.log(`Starting ${strategyType} rebalanced strategy simulation`);
     const rebalancedResult = await calculateRebalancedStrategy(
-      tickers, startYear, endYear, initialInvestment, strategyType, bypassCache, historicalData
+      tickers, startYear, endYear, initialInvestment, strategyType, bypassCache, historicalData, cacheStats
     );
     currentValue = rebalancedResult.finalValue;
     Object.assign(yearlyHoldings, rebalancedResult.yearlyHoldings);
