@@ -135,8 +135,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
     } else if (req.method === 'POST') {
-      // Clear all cached analysis results
-      const { action } = req.body;
+      // Advanced cache operations
+      const { action, tickers, confirmationCode } = req.body;
       
       if (action === 'clear_all') {
         console.log('🗑️ Clearing all cached analysis results...');
@@ -159,9 +159,132 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           deletedCount,
           message: `Cleared ${deletedCount} cached analyses`
         });
+
+      } else if (action === 'clear_market_data') {
+        // Advanced: Clear EODHD market data cache
+        if (confirmationCode !== 'CLEAR_MARKET_DATA') {
+          return res.status(400).json({
+            error: 'Invalid confirmation code. This is a protected operation.'
+          });
+        }
+
+        console.log('🚨 ADVANCED: Clearing all EODHD market data cache...');
+        
+        // Get all market data cache keys
+        const [priceKeys, marketCapKeys, sharesKeys] = await Promise.all([
+          cache.keys('price:*'),
+          cache.keys('market-cap:*'), 
+          cache.keys('shares:*')
+        ]);
+        
+        const allMarketDataKeys = [...priceKeys, ...marketCapKeys, ...sharesKeys];
+        
+        if (allMarketDataKeys.length === 0) {
+          return res.status(200).json({
+            success: true,
+            deletedCount: 0,
+            message: 'No market data cache to clear'
+          });
+        }
+
+        const deletedCount = await cache.mdel(allMarketDataKeys);
+        
+        console.log(`✅ Successfully cleared ${deletedCount} market data cache entries`);
+        
+        return res.status(200).json({
+          success: true,
+          deletedCount,
+          message: `Cleared ${deletedCount} market data cache entries (prices, market caps, shares)`,
+          breakdown: {
+            prices: priceKeys.length,
+            marketCaps: marketCapKeys.length, 
+            shares: sharesKeys.length
+          }
+        });
+
+      } else if (action === 'clear_everything') {
+        // Nuclear option: Clear everything
+        if (confirmationCode !== 'NUCLEAR_CLEAR_EVERYTHING') {
+          return res.status(400).json({
+            error: 'Invalid confirmation code. This is a NUCLEAR operation that clears ALL cache.'
+          });
+        }
+
+        console.log('☢️ NUCLEAR: Clearing ALL cache data...');
+        
+        // Get all keys
+        const allKeys = await cache.keys('*');
+        
+        if (allKeys.length === 0) {
+          return res.status(200).json({
+            success: true,
+            deletedCount: 0,
+            message: 'Cache is already empty'
+          });
+        }
+
+        const deletedCount = await cache.mdel(allKeys);
+        
+        console.log(`✅ Successfully cleared ALL cache: ${deletedCount} entries`);
+        
+        return res.status(200).json({
+          success: true,
+          deletedCount,
+          message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
+        });
+
+      } else if (action === 'clear_by_ticker') {
+        // Clear all data for specific tickers
+        if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
+          return res.status(400).json({
+            error: 'Missing tickers array for ticker-specific clearing'
+          });
+        }
+
+        if (confirmationCode !== 'CLEAR_TICKER_DATA') {
+          return res.status(400).json({
+            error: 'Invalid confirmation code. This is a protected operation.'
+          });
+        }
+
+        console.log(`🗑️ ADVANCED: Clearing cache data for tickers: ${tickers.join(', ')}`);
+        
+        let allTickerKeys: string[] = [];
+        
+        // For each ticker, find all related cache keys
+        for (const ticker of tickers) {
+          const tickerPattern = ticker.toUpperCase();
+          const [priceKeys, marketCapKeys, sharesKeys, backtestKeys] = await Promise.all([
+            cache.keys(`price:${tickerPattern}:*`),
+            cache.keys(`market-cap:${tickerPattern}:*`),
+            cache.keys(`shares:${tickerPattern}:*`),
+            cache.keys(`backtest:*${tickerPattern}*`) // Analysis results containing this ticker
+          ]);
+          
+          allTickerKeys.push(...priceKeys, ...marketCapKeys, ...sharesKeys, ...backtestKeys);
+        }
+        
+        if (allTickerKeys.length === 0) {
+          return res.status(200).json({
+            success: true,
+            deletedCount: 0,
+            message: `No cache data found for tickers: ${tickers.join(', ')}`
+          });
+        }
+
+        const deletedCount = await cache.mdel(allTickerKeys);
+        
+        console.log(`✅ Successfully cleared ${deletedCount} cache entries for ${tickers.length} tickers`);
+        
+        return res.status(200).json({
+          success: true,
+          deletedCount,
+          message: `Cleared ${deletedCount} cache entries for tickers: ${tickers.join(', ')}`
+        });
+
       } else {
         return res.status(400).json({
-          error: 'Invalid action. Use "clear_all" to clear all cached results.'
+          error: 'Invalid action. Supported actions: clear_all, clear_market_data, clear_everything, clear_by_ticker'
         });
       }
 

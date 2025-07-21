@@ -25,6 +25,9 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
   const [totalSize, setTotalSize] = useState(0)
   const [sortBy, setSortBy] = useState<'date' | 'tickers' | 'period'>('date')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [confirmationInput, setConfirmationInput] = useState('')
+  const [tickerInput, setTickerInput] = useState('')
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -90,6 +93,124 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
     } catch (error) {
       alert('Failed to clear cached analyses')
       console.error('Clear all error:', error)
+    }
+  }
+
+  const clearMarketData = async () => {
+    if (confirmationInput !== 'CLEAR_MARKET_DATA') {
+      alert('Please type the confirmation code exactly: CLEAR_MARKET_DATA')
+      return
+    }
+
+    if (!confirm('⚠️ WARNING: This will clear ALL EODHD market data cache (prices, market caps, shares). This is expensive data that will need to be re-fetched. Are you absolutely sure?')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/cache-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'clear_market_data',
+          confirmationCode: 'CLEAR_MARKET_DATA'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`Successfully cleared ${data.deletedCount} market data cache entries\n\nBreakdown:\n- Prices: ${data.breakdown?.prices || 0}\n- Market Caps: ${data.breakdown?.marketCaps || 0}\n- Shares: ${data.breakdown?.shares || 0}`)
+        setConfirmationInput('')
+        fetchCachedAnalyses()
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Clear market data failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to clear market data: ${error.message}`)
+      console.error('Clear market data error:', error)
+    }
+  }
+
+  const clearEverything = async () => {
+    if (confirmationInput !== 'NUCLEAR_CLEAR_EVERYTHING') {
+      alert('Please type the confirmation code exactly: NUCLEAR_CLEAR_EVERYTHING')
+      return
+    }
+
+    if (!confirm('☢️ NUCLEAR WARNING: This will delete EVERYTHING in the cache - all analyses AND all EODHD market data. This cannot be undone and will be very expensive to rebuild. Are you absolutely certain?')) {
+      return
+    }
+
+    if (!confirm('Final confirmation: Type YES to proceed with nuclear cache clearing')) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/cache-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'clear_everything',
+          confirmationCode: 'NUCLEAR_CLEAR_EVERYTHING'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`☢️ NUCLEAR CLEAR COMPLETE: Deleted ALL ${data.deletedCount} cache entries`)
+        setConfirmationInput('')
+        setSelectedKeys(new Set())
+        fetchCachedAnalyses()
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Nuclear clear failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to nuclear clear: ${error.message}`)
+      console.error('Nuclear clear error:', error)
+    }
+  }
+
+  const clearByTicker = async () => {
+    if (confirmationInput !== 'CLEAR_TICKER_DATA') {
+      alert('Please type the confirmation code exactly: CLEAR_TICKER_DATA')
+      return
+    }
+
+    const tickers = tickerInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    if (tickers.length === 0) {
+      alert('Please enter at least one ticker symbol')
+      return
+    }
+
+    if (!confirm(`Are you sure you want to clear ALL cache data (analyses + market data) for these tickers?\n\n${tickers.join(', ')}\n\nThis cannot be undone.`)) {
+      return
+    }
+
+    try {
+      const response = await fetch('/api/cache-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'clear_by_ticker',
+          tickers,
+          confirmationCode: 'CLEAR_TICKER_DATA'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        alert(`Successfully cleared ${data.deletedCount} cache entries for tickers: ${tickers.join(', ')}`)
+        setConfirmationInput('')
+        setTickerInput('')
+        fetchCachedAnalyses()
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Clear by ticker failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to clear ticker data: ${error.message}`)
+      console.error('Clear by ticker error:', error)
     }
   }
 
@@ -234,6 +355,120 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                 🗑️ Clear All
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Advanced Controls */}
+        <div className="border-b border-gray-200 bg-red-50">
+          <div className="p-4">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center space-x-2 text-red-700 hover:text-red-900 font-medium"
+            >
+              <span className="text-lg">⚠️</span>
+              <span>Advanced Cache Controls</span>
+              <svg 
+                className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            
+            {showAdvanced && (
+              <div className="mt-4 space-y-4">
+                <div className="bg-white border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <span className="text-xl">☢️</span>
+                    <h4 className="font-semibold text-red-900">Dangerous Operations</h4>
+                  </div>
+                  <p className="text-sm text-red-700 mb-4">
+                    These operations affect EODHD market data cache, which is expensive to rebuild. Use with extreme caution.
+                  </p>
+                  
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {/* Clear Market Data */}
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Clear Market Data</h5>
+                      <p className="text-xs text-gray-600">Clears all EODHD price, market cap, and shares data</p>
+                      <input
+                        type="text"
+                        placeholder="Type: CLEAR_MARKET_DATA"
+                        value={confirmationInput}
+                        onChange={(e) => setConfirmationInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                      />
+                      <button
+                        onClick={clearMarketData}
+                        disabled={confirmationInput !== 'CLEAR_MARKET_DATA'}
+                        className="w-full px-3 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                      >
+                        🚨 Clear Market Data
+                      </button>
+                    </div>
+
+                    {/* Clear By Ticker */}
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Clear By Ticker</h5>
+                      <p className="text-xs text-gray-600">Clears all data for specific tickers</p>
+                      <input
+                        type="text"
+                        placeholder="Enter tickers: AAPL,MSFT"
+                        value={tickerInput}
+                        onChange={(e) => setTickerInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Type: CLEAR_TICKER_DATA"
+                        value={confirmationInput}
+                        onChange={(e) => setConfirmationInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                      />
+                      <button
+                        onClick={clearByTicker}
+                        disabled={confirmationInput !== 'CLEAR_TICKER_DATA' || !tickerInput.trim()}
+                        className="w-full px-3 py-2 bg-red-500 hover:bg-red-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                      >
+                        🗑️ Clear Ticker Data
+                      </button>
+                    </div>
+
+                    {/* Nuclear Option */}
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Nuclear Clear</h5>
+                      <p className="text-xs text-gray-600">⚠️ Deletes EVERYTHING in cache</p>
+                      <input
+                        type="text"
+                        placeholder="Type: NUCLEAR_CLEAR_EVERYTHING"
+                        value={confirmationInput}
+                        onChange={(e) => setConfirmationInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-red-400 rounded text-sm"
+                      />
+                      <button
+                        onClick={clearEverything}
+                        disabled={confirmationInput !== 'NUCLEAR_CLEAR_EVERYTHING'}
+                        className="w-full px-3 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-300 text-white rounded text-sm font-bold"
+                      >
+                        ☢️ NUCLEAR CLEAR
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+                    <div className="flex items-start space-x-2">
+                      <span className="text-yellow-600 mt-0.5">⚠️</span>
+                      <div className="text-sm text-yellow-800">
+                        <strong>Warning:</strong> Advanced operations require confirmation codes and will permanently delete cached data. 
+                        EODHD market data is expensive to re-fetch and may take significant time to rebuild.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
