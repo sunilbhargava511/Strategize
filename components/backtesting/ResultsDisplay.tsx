@@ -821,7 +821,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.slice(0, 8).map((item, index) => {
+                      {data.map((item, index) => {
                         const individualPercent = data.reduce((sum, d) => sum + Math.max(0, d.gain), 0) > 0
                           ? (Math.max(0, item.gain) / data.reduce((sum, d) => sum + Math.max(0, d.gain), 0)) * 100
                           : 0

@@ -2012,7 +2012,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           endYear, 
           initialInvestment,
           tickerCount: tickers.length,
-          tickers: tickers.slice(0, 5)
+          tickers: tickers
         },
         message: 'Note: EODHD API token not configured. Using simulated data.'
       };
@@ -2248,7 +2248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         endYear, 
         initialInvestment,
         tickerCount: processedTickers.length,
-        tickers: processedTickers.slice(0, 10),
+        tickers: processedTickers,
         originalTickerCount: finalValidTickers.length,
         isOptimized: isLargePortfolioOptimized
       },
