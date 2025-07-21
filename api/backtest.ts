@@ -2247,7 +2247,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`🏆 TOP PERFORMER: ${topStrategy.icon} ${topStrategy.name} - ${formatCurrency(topStrategy.value)}`);
       
       console.log(`\n📊 CACHE STATISTICS: ${globalCacheStats.hits} hits, ${globalCacheStats.misses} misses (${Math.round((globalCacheStats.hits / globalCacheStats.total) * 100)}% hit rate)`);
-      console.log(`⏱️  READY TO SEND RESULTS TO FRONTEND...`);
+      console.log(`⏱️ STRATEGIES COMPLETE - Starting results finalization...`);
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
       
@@ -2256,6 +2256,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw strategyError;
     }
 
+    // Phase 3: Results Finalization
+    const finalizationStart = Date.now();
+    console.log(`\n📦 FINALIZING RESULTS: Preparing comprehensive analysis package...`);
+    
+    console.log(`   📊 Consolidating strategy results...`);
     const results = {
       equalWeightBuyHold,
       marketCapBuyHold,
@@ -2286,25 +2291,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
         'Calculations based on real EODHD market data with SPY benchmark.'
     };
+    
+    console.log(`   📋 Adding metadata and parameters...`);
+    console.log(`   📈 Including historical data (${Object.keys(historicalData).length} ticker datasets)...`);
+    console.log(`   🔧 Preparing debug information...`);
 
     // Add final timing information
+    overallTimings.finalization = Date.now() - finalizationStart;
     overallTimings.total = Date.now() - apiStartTime;
-    overallTimings.cacheAndResponse = overallTimings.total - overallTimings.validation - overallTimings.strategies;
+    overallTimings.cacheAndResponse = overallTimings.total - overallTimings.validation - overallTimings.strategies - overallTimings.finalization;
     
     // Log comprehensive timing breakdown
     console.log(`\n⏱️ === COMPREHENSIVE TIMING BREAKDOWN ===`);
     console.log(`📋 Ticker Validation: ${(overallTimings.validation / 1000).toFixed(1)}s`);
     console.log(`🧮 Strategy Calculations: ${(overallTimings.strategies / 1000).toFixed(1)}s`);
+    console.log(`📦 Results Finalization: ${(overallTimings.finalization / 1000).toFixed(1)}s`);
     console.log(`💾 Cache & Response: ${(overallTimings.cacheAndResponse / 1000).toFixed(1)}s`);
     console.log(`⏱️ Total API Time: ${(overallTimings.total / 1000).toFixed(1)}s`);
     console.log(`📊 Processing Efficiency: ${(processedTickers.length / (overallTimings.total / 1000)).toFixed(1)} tickers/second`);
     
     // Cache forever if end year is in the past, otherwise cache for 1 day (unless bypassed)
+    console.log(`   💾 Caching results for future requests...`);
     if (!bypass_cache) {
       const currentYear = new Date().getFullYear();
       const cacheTime = endYear < currentYear ? undefined : 86400;
+      const cacheDuration = cacheTime ? `${cacheTime}s` : 'permanently';
+      console.log(`   💾 Saving to cache (duration: ${cacheDuration})...`);
       await cache.set(cacheKey, results, cacheTime);
+      console.log(`   ✅ Results cached successfully`);
+    } else {
+      console.log(`   ⚠️ Cache bypassed - results not saved`);
     }
+
+    console.log(`\n🚀 SENDING RESPONSE TO FRONTEND...`);
+    console.log(`📦 Final package size: ${Object.keys(results).length} main sections`);
+    console.log(`✅ Analysis complete for ${processedTickers.length} tickers!`);
 
     res.status(200).json({ 
       ...results, 
