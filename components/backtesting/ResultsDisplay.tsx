@@ -175,12 +175,196 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
   const tabs = [
     { id: 'overview', name: 'Overview', icon: '📊' },
     { id: 'holdings', name: 'Holdings', icon: '📋' },
+    { id: 'details', name: 'Analysis Details', icon: '⚙️' },
     { id: 'equalWeightBuyHold', name: 'Equal Weight B&H', icon: '⚖️' },
     { id: 'marketCapBuyHold', name: 'Market Cap B&H', icon: '📈' },
     { id: 'equalWeightRebalanced', name: 'Equal Weight Rebal.', icon: '🔄' },
     { id: 'marketCapRebalanced', name: 'Market Cap Rebal.', icon: '📊' },
     { id: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
   ]
+
+  const renderAnalysisDetailsView = () => {
+    const cacheStats = results.cacheStats || { hits: 0, misses: 0, total: 0 }
+    const timings = results.timings || {}
+    const parameters = results.parameters || {}
+    
+    const hitRate = cacheStats.total > 0 ? ((cacheStats.hits / cacheStats.total) * 100).toFixed(1) : '0.0'
+    
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="flex items-center space-x-3">
+          <span className="text-3xl">⚙️</span>
+          <h3 className="text-2xl font-semibold text-primary-900">Analysis Details</h3>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Cache Statistics */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <span>💾</span>
+              <span>Cache Performance</span>
+            </h4>
+            
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 bg-green-50 rounded-lg">
+                <span className="text-gray-700">Cache Hit Rate</span>
+                <span className="font-semibold text-green-700">{hitRate}%</span>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-700">{cacheStats.hits}</div>
+                  <div className="text-sm text-gray-600">Cache Hits</div>
+                </div>
+                <div className="text-center p-3 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-700">{cacheStats.misses}</div>
+                  <div className="text-sm text-gray-600">Cache Misses</div>
+                </div>
+              </div>
+              
+              <div className="text-center p-3 bg-gray-50 rounded-lg">
+                <div className="text-2xl font-bold text-gray-700">{cacheStats.total}</div>
+                <div className="text-sm text-gray-600">Total Operations</div>
+              </div>
+              
+              <div className="text-xs text-gray-500 mt-4">
+                Higher cache hit rates indicate better performance and reduced API calls to EODHD.
+              </div>
+            </div>
+          </div>
+
+          {/* Timing Breakdown */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <span>⏱️</span>
+              <span>Performance Timing</span>
+            </h4>
+            
+            <div className="space-y-3">
+              {timings.validation && (
+                <div className="flex justify-between items-center p-2 bg-purple-50 rounded">
+                  <span className="text-gray-700">Ticker Validation</span>
+                  <span className="font-semibold text-purple-700">{(timings.validation / 1000).toFixed(1)}s</span>
+                </div>
+              )}
+              
+              {timings.strategies && (
+                <div className="flex justify-between items-center p-2 bg-blue-50 rounded">
+                  <span className="text-gray-700">Strategy Calculations</span>
+                  <span className="font-semibold text-blue-700">{(timings.strategies / 1000).toFixed(1)}s</span>
+                </div>
+              )}
+              
+              {timings.finalization && (
+                <div className="flex justify-between items-center p-2 bg-green-50 rounded">
+                  <span className="text-gray-700">Results Finalization</span>
+                  <span className="font-semibold text-green-700">{(timings.finalization / 1000).toFixed(1)}s</span>
+                </div>
+              )}
+              
+              {timings.total && (
+                <div className="flex justify-between items-center p-3 bg-gray-800 text-white rounded-lg font-semibold">
+                  <span>Total Analysis Time</span>
+                  <span>{(timings.total / 1000).toFixed(1)}s</span>
+                </div>
+              )}
+              
+              {parameters.tickerCount && timings.total && (
+                <div className="text-center p-2 bg-yellow-50 rounded">
+                  <div className="text-sm text-gray-600">Processing Efficiency</div>
+                  <div className="font-semibold text-yellow-700">
+                    {(parameters.tickerCount / (timings.total / 1000)).toFixed(1)} tickers/second
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Analysis Parameters */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <span>📋</span>
+              <span>Analysis Parameters</span>
+            </h4>
+            
+            <div className="space-y-3">
+              {parameters.tickerCount && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tickers Processed</span>
+                  <span className="font-semibold">{parameters.tickerCount}</span>
+                </div>
+              )}
+              
+              {parameters.originalTickerCount && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Original Tickers</span>
+                  <span className="font-semibold">{parameters.originalTickerCount}</span>
+                </div>
+              )}
+              
+              {parameters.startYear && parameters.endYear && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Analysis Period</span>
+                  <span className="font-semibold">{parameters.startYear} - {parameters.endYear}</span>
+                </div>
+              )}
+              
+              {parameters.initialInvestment && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Initial Investment</span>
+                  <span className="font-semibold">{formatCurrency(parameters.initialInvestment)}</span>
+                </div>
+              )}
+              
+              <div className="flex justify-between">
+                <span className="text-gray-600">Cache Used</span>
+                <span className="font-semibold">{results.from_cache ? 'Yes' : 'No'}</span>
+              </div>
+              
+              {results.historicalData && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Data Sources</span>
+                  <span className="font-semibold">{Object.keys(results.historicalData).length} tickers</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* System Information */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center space-x-2">
+              <span>🔧</span>
+              <span>System Information</span>
+            </h4>
+            
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Data Provider</span>
+                <span className="font-semibold">EODHD Financial API</span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-gray-600">Calculation Engine</span>
+                <span className="font-semibold">Vercel Serverless</span>
+              </div>
+              
+              <div className="flex justify-between">
+                <span className="text-gray-600">Cache Provider</span>
+                <span className="font-semibold">Upstash Redis</span>
+              </div>
+              
+              {results.message && (
+                <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                  <div className="text-sm text-blue-800">{results.message}</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   const renderHoldingsView = () => {
     if (!results.parameters) return <div>No portfolio data available</div>
@@ -923,6 +1107,9 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
       ) : activeTab === 'holdings' ? (
         // Holdings View
         renderHoldingsView()
+      ) : activeTab === 'details' ? (
+        // Analysis Details View
+        renderAnalysisDetailsView()
       ) : (
         // Individual Strategy Detail Views
         <div>

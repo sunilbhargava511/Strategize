@@ -118,31 +118,59 @@ export default function Home() {
       return
     }
 
+    // Scroll to top to show progress
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+
     setIsRunning(true)
     setResults(null)
     setShowResults(false)
     setCurrentProgress({
       phase: 'Starting Analysis',
-      detail: `Preparing to analyze ${detectedTickers.length} tickers...`,
+      detail: `Initializing analysis for ${detectedTickers.length} tickers (${configuration.startYear}-${configuration.endYear})...`,
       progress: 5
     })
 
     try {
-      // Simulate progress updates during the fetch
+      // More descriptive progress updates based on portfolio size
+      const isLargePortfolio = detectedTickers.length > 25
+      const isMediumPortfolio = detectedTickers.length > 10
+      
       const progressUpdates = [
-        { phase: 'Validating Tickers', detail: 'Checking ticker symbols against market data...', progress: 15 },
-        { phase: 'Fetching Market Data', detail: 'Retrieving historical prices and market cap data...', progress: 35 },
-        { phase: 'Processing Strategies', detail: 'Calculating investment strategies...', progress: 60 },
-        { phase: 'Finalizing Results', detail: 'Preparing analysis results...', progress: 85 }
+        { 
+          phase: 'Validating Tickers', 
+          detail: `Verifying ${detectedTickers.length} ticker symbols against EODHD exchange data...`, 
+          progress: 15 
+        },
+        { 
+          phase: 'Fetching Market Data', 
+          detail: isLargePortfolio 
+            ? `Retrieving ${(configuration.endYear - configuration.startYear) * detectedTickers.length}+ data points (this may take a few minutes for large portfolios)...`
+            : `Loading historical prices and market cap data for ${detectedTickers.length} tickers...`, 
+          progress: 35 
+        },
+        { 
+          phase: 'Calculating Strategies', 
+          detail: isLargePortfolio 
+            ? `Processing 5 investment strategies across ${detectedTickers.length} tickers (Equal Weight, Market Cap, Rebalanced versions, SPY Benchmark)...`
+            : `Running strategy calculations: Equal Weight, Market Cap, Rebalanced, SPY Benchmark...`, 
+          progress: 70 
+        },
+        { 
+          phase: 'Finalizing Results', 
+          detail: `Preparing comprehensive analysis package with performance metrics, cache statistics, and timing data...`, 
+          progress: 90 
+        }
       ];
 
       let updateIndex = 0;
+      // Adjust timing based on portfolio size
+      const updateInterval = isLargePortfolio ? 8000 : isMediumPortfolio ? 5000 : 3000
       const progressInterval = setInterval(() => {
         if (updateIndex < progressUpdates.length) {
           setCurrentProgress(progressUpdates[updateIndex]);
           updateIndex++;
         }
-      }, 3000); // Update every 3 seconds
+      }, updateInterval);
 
       const response = await fetch('/api/backtest', {
         method: 'POST',
@@ -162,13 +190,19 @@ export default function Home() {
         throw new Error('Analysis failed')
       }
 
+      const data = await response.json()
+      
+      // Show completion summary with cache and timing stats
+      const cacheStats = data.cacheStats || { hits: 0, misses: 0, total: 0 }
+      const timings = data.timings || {}
+      const hitRate = cacheStats.total > 0 ? Math.round((cacheStats.hits / cacheStats.total) * 100) : 0
+      
       setCurrentProgress({
         phase: 'Analysis Complete',
-        detail: 'Results ready! Loading interface...',
+        detail: `✅ Processed ${data.parameters?.tickerCount || detectedTickers.length} tickers in ${timings.total ? (timings.total/1000).toFixed(1) : '?'}s | Cache: ${hitRate}% hit rate (${cacheStats.hits}/${cacheStats.total}) | Ready!`,
         progress: 100
       })
 
-      const data = await response.json()
       setResults(data)
       setShowResults(true)
     } catch (error) {

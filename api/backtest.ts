@@ -2330,7 +2330,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json({ 
       ...results, 
       from_cache: false,
-      timings: overallTimings
+      timings: overallTimings,
+      cacheStats: globalCacheStats
     });
   } catch (error: any) {
     console.error('Backtest error:', error);
