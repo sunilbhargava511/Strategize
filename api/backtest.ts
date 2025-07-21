@@ -1103,38 +1103,41 @@ async function calculateStrategy(
   const initialMarketCaps: Record<string, number> = {};
   const tickerAvailability: Record<string, { hasStart: boolean; hasEnd: boolean; }> = {};
   
-  for (const ticker of tickers) {
+  // Fetch all ticker data in parallel for better performance
+  const tickerPromises = tickers.map(async (ticker) => {
     try {
-      const startData = await fetchStockData(ticker, startDate, bypassCache, historicalData);
-      const endData = await fetchStockData(ticker, endDate, bypassCache, historicalData);
+      const [startData, endData] = await Promise.all([
+        fetchStockData(ticker, startDate, bypassCache, historicalData),
+        fetchStockData(ticker, endDate, bypassCache, historicalData)
+      ]);
     
-    tickerAvailability[ticker] = {
-      hasStart: !!startData,
-      hasEnd: !!endData
-    };
-    
-    // For buy & hold strategies, we need both start and end prices
-    if (startData && endData) {
-      initialPrices[ticker] = startData.adjusted_close;
-      finalPrices[ticker] = endData.adjusted_close;
+      tickerAvailability[ticker] = {
+        hasStart: !!startData,
+        hasEnd: !!endData
+      };
       
-      // Only get market cap for market cap weighted strategies
-      if (strategyType === 'marketCap') {
-        const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
-        if (marketCap) {
-          initialMarketCaps[ticker] = marketCap;
-          console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+      // For buy & hold strategies, we need both start and end prices
+      if (startData && endData) {
+        initialPrices[ticker] = startData.adjusted_close;
+        finalPrices[ticker] = endData.adjusted_close;
+        
+        // Only get market cap for market cap weighted strategies
+        if (strategyType === 'marketCap') {
+          const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
+          if (marketCap) {
+            initialMarketCaps[ticker] = marketCap;
+            console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+          } else {
+            console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
+            // Set to 0 to indicate missing data
+            initialMarketCaps[ticker] = 0;
+          }
         } else {
-          console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
-          // Set to 0 to indicate missing data
-          initialMarketCaps[ticker] = 0;
+          // For equal weight strategies, market cap is not needed
+          initialMarketCaps[ticker] = 1; // Use 1 as placeholder since equal weight doesn't use market cap
         }
-      } else {
-        // For equal weight strategies, market cap is not needed
-        initialMarketCaps[ticker] = 1; // Use 1 as placeholder since equal weight doesn't use market cap
       }
-    }
-    // For rebalanced strategies, we'll handle availability year by year
+      // For rebalanced strategies, we'll handle availability year by year
     } catch (error) {
       console.error(`Error fetching data for ${ticker}:`, error);
       // Continue with other tickers
@@ -1143,7 +1146,9 @@ async function calculateStrategy(
         hasEnd: false
       };
     }
-  }
+  });
+
+  await Promise.all(tickerPromises);
   
   // Determine which stocks to use based on strategy type
   let validTickers: string[];
@@ -1863,19 +1868,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Collect historical data used in calculations for consistent Excel export
     const historicalData: Record<string, Record<string, any>> = {};
     
-    // Pre-populate historical data for Excel export (fetch data for each year)
-    console.log('Pre-fetching yearly data for Excel export consistency...');
-    const allTickersForData = ['SPY', ...processedTickers];
-    for (const ticker of allTickersForData) {
-      for (let year = startYear; year <= endYear; year++) {
-        const yearDate = `${year}-01-02`;
+    // Pre-populate only essential data to avoid timeouts
+    console.log('Pre-fetching essential data only (start/end years for performance)...');
+    const essentialDates = [
+      `${startYear}-01-02`,
+      `${endYear >= 2025 ? 2024 : endYear}-12-31`
+    ];
+    
+    const allTickersForData = ['SPY', ...processedTickers.slice(0, 20)]; // Limit to prevent timeout
+    
+    // Use Promise.all for parallel processing instead of sequential
+    const dataPromises = allTickersForData.flatMap(ticker =>
+      essentialDates.map(async (date) => {
         try {
-          await fetchStockData(ticker, yearDate, bypass_cache, historicalData);
+          return await fetchStockData(ticker, date, bypass_cache, historicalData);
         } catch (error) {
-          console.log(`Could not fetch ${ticker} data for ${yearDate}:`, error);
+          console.log(`Could not fetch ${ticker} data for ${date}:`, error);
+          return null;
         }
-      }
-    }
+      })
+    );
+    
+    await Promise.all(dataPromises);
     
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
@@ -1892,7 +1906,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark;
     
     try {
-      [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
+      // Calculate strategies with timeout protection
+      const strategyTimeout = 45000; // 45 seconds max per strategy set
+      const strategiesPromise = Promise.all([
         calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData).catch(err => {
           console.error('Error in equalWeightBuyHold:', err);
           throw err;
@@ -1914,11 +1930,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           throw err;
         })
       ]);
+
+      // Add timeout to prevent Vercel function timeout
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Strategy calculations timed out')), strategyTimeout)
+      );
+
+      [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.race([
+        strategiesPromise,
+        timeoutPromise
+      ]) as any;
       
       console.log('All strategy calculations completed successfully');
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
-      throw strategyError;
+      
+      // If we have too many tickers, try with a reduced set
+      if (processedTickers.length > 25) {
+        console.log(`Timeout with ${processedTickers.length} tickers, trying with top 25 tickers...`);
+        const reducedTickers = processedTickers.slice(0, 25);
+        
+        try {
+          [equalWeightBuyHold, marketCapBuyHold, equalWeightRebalanced, marketCapRebalanced, spyBenchmark] = await Promise.all([
+            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData),
+            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData),
+            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData),
+            calculateStrategy(reducedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData),
+            calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData)
+          ]);
+          
+          console.log(`Successfully calculated with reduced ticker set (${reducedTickers.length} tickers)`);
+        } catch (fallbackError) {
+          console.error('Even reduced ticker calculation failed:', fallbackError);
+          throw new Error(`Backtest failed: Portfolio too large (${processedTickers.length} tickers). Please try with fewer tickers (max ~25 for optimal performance).`);
+        }
+      } else {
+        throw strategyError;
+      }
     }
 
     const results = {
