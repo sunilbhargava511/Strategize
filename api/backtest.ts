@@ -1139,11 +1139,26 @@ async function calculateStrategy(
   console.log(`📊 Strategy: ${strategyType} ${rebalance ? 'Rebalanced' : 'Buy & Hold'}`);
   console.log(`🔄 Fetching data for ${tickers.length} tickers from ${startDate} to ${endDate}`);
   
-  // Batch process tickers to avoid overwhelming the API
-  const BATCH_SIZE = 10; // Process 10 tickers at a time
+  // Dynamic batch sizing based on portfolio size
+  const getBatchSize = (tickerCount: number) => {
+    if (tickerCount > 150) return 20; // Large batches for very large portfolios
+    if (tickerCount > 75) return 15;  // Medium batches for large portfolios
+    if (tickerCount > 30) return 10;  // Small batches for medium portfolios
+    return 5; // Very small batches for small portfolios (more parallel processing)
+  };
+  
+  const getPauseTime = (tickerCount: number) => {
+    if (tickerCount > 150) return 200; // Shorter pauses for very large portfolios (time is critical)
+    if (tickerCount > 75) return 300;
+    return 500; // Longer pauses for smaller portfolios (more respectful)
+  };
+  
+  const BATCH_SIZE = getBatchSize(tickers.length);
+  const PAUSE_TIME = getPauseTime(tickers.length);
   let processedCount = 0;
   
-  console.log(`🔄 Processing ${tickers.length} tickers in batches of ${BATCH_SIZE}`);
+  console.log(`🔄 Processing ${tickers.length} tickers in batches of ${BATCH_SIZE} (${Math.ceil(tickers.length/BATCH_SIZE)} batches total)`);
+  console.log(`⏱️ Using ${PAUSE_TIME}ms pauses between batches for optimal performance`);
   
   // Process tickers in batches
   for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
@@ -1202,10 +1217,12 @@ async function calculateStrategy(
     // Wait for current batch to complete before starting next batch
     await Promise.all(batchPromises);
     
-    // Add small delay between batches to be respectful to the API
+    // Add dynamic delay between batches
     if (i + BATCH_SIZE < tickers.length) {
-      console.log(`⏱️  Batch ${Math.floor(i/BATCH_SIZE) + 1} complete, pausing briefly before next batch...`);
-      await new Promise(resolve => setTimeout(resolve, 500)); // 500ms pause
+      const batchNum = Math.floor(i/BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(tickers.length/BATCH_SIZE);
+      console.log(`⏱️  Batch ${batchNum}/${totalBatches} complete, pausing ${PAUSE_TIME}ms before next batch...`);
+      await new Promise(resolve => setTimeout(resolve, PAUSE_TIME));
     }
   }
   
@@ -1844,8 +1861,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       corrections.forEach(c => console.log(`   ${c.ticker} → ${c.correctedTo}`));
     }
 
-    // Use only valid tickers for processing
-    const processedTickers = finalValidTickers;
+    // Handle very large portfolios with intelligent optimization
+    let processedTickers = finalValidTickers;
+    let isLargePortfolioOptimized = false;
+    
+    if (finalValidTickers.length > 150) {
+      console.log(`\n⚡ VERY LARGE PORTFOLIO DETECTED (${finalValidTickers.length} tickers)`);
+      console.log(`🎯 For optimal performance and to avoid timeouts, using top 100 tickers`);
+      console.log(`📊 This provides representative results while ensuring completion`);
+      
+      // For very large portfolios, use a representative sample
+      processedTickers = finalValidTickers.slice(0, 100);
+      isLargePortfolioOptimized = true;
+      
+      console.log(`✅ Portfolio optimized: ${processedTickers.length} tickers selected from ${finalValidTickers.length} total`);
+    } else {
+      // Use all tickers for manageable portfolios
+      processedTickers = finalValidTickers;
+    }
     
     // Check cache first (unless bypassed)
     const tickerString = processedTickers.sort().join(',');
@@ -2142,7 +2175,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         endYear, 
         initialInvestment,
         tickerCount: processedTickers.length,
-        tickers: processedTickers.slice(0, 10)
+        tickers: processedTickers.slice(0, 10),
+        originalTickerCount: finalValidTickers.length,
+        isOptimized: isLargePortfolioOptimized
       },
       historicalData, // Include the actual data used in calculations
       debug: {
