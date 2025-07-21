@@ -890,20 +890,6 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
       },
       'SPY': {
         '2010-01-02': 110.0,
-        '2011-01-02': 126.8,
-        '2012-01-02': 128.2,
-        '2013-01-02': 146.1,
-        '2014-01-02': 184.4,
-        '2015-01-02': 205.5,
-        '2016-01-02': 201.0,
-        '2017-01-02': 227.5,
-        '2018-01-02': 267.8,
-        '2019-01-02': 249.9,
-        '2020-01-02': 323.5,
-        '2021-01-02': 372.6,
-        '2022-01-02': 477.7,
-        '2023-01-02': 383.2,
-        '2024-01-02': 477.9,
         '2024-12-31': 576.04
       }
     };
@@ -1125,15 +1111,20 @@ async function calculateStrategy(
       initialPrices[ticker] = startData.adjusted_close;
       finalPrices[ticker] = endData.adjusted_close;
       
-      // Get real market cap using the new helper function
-      const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
-      if (marketCap) {
-        initialMarketCaps[ticker] = marketCap;
-        console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+      // Only get market cap for market cap weighted strategies
+      if (strategyType === 'marketCap') {
+        const marketCap = await getMarketCapForYear(ticker, startYear, bypassCache);
+        if (marketCap) {
+          initialMarketCaps[ticker] = marketCap;
+          console.log(`✅ Real initial market cap for ${ticker}: $${(marketCap / 1000000000).toFixed(2)}B`);
+        } else {
+          console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
+          // Set to 0 to indicate missing data
+          initialMarketCaps[ticker] = 0;
+        }
       } else {
-        console.error(`❌ WARNING: Could not get real market cap for ${ticker}, this may affect market cap weighted strategies`);
-        // Set to 0 to indicate missing data
-        initialMarketCaps[ticker] = 0;
+        // For equal weight strategies, market cap is not needed
+        initialMarketCaps[ticker] = 1; // Use 1 as placeholder since equal weight doesn't use market cap
       }
     }
     // For rebalanced strategies, we'll handle availability year by year
@@ -1217,15 +1208,36 @@ async function calculateStrategy(
       const stockMarketCaps: Record<string, number> = {};
       
       for (const ticker of tickers) {
-        // Get both price and market cap using the new helper function
-        const data = await getPriceAndMarketCapForYear(ticker, year, bypassCache);
-        if (data) {
+        // Get price data (required for all strategies)
+        const price = await getAdjustedPriceForYear(ticker, year, bypassCache);
+        
+        if (price) {
           availableStocks.push(ticker);
-          stockPrices[ticker] = data.price;
-          stockMarketCaps[ticker] = data.marketCap;
-          console.log(`  ✅ Real data for ${ticker}: $${data.price.toFixed(2)} price, $${(data.marketCap / 1000000000).toFixed(2)}B market cap`);
+          stockPrices[ticker] = price;
+          
+          // Only get market cap for market cap weighted strategies
+          if (strategyType === 'marketCap') {
+            const marketCap = await getMarketCapForYear(ticker, year, bypassCache);
+            if (marketCap) {
+              stockMarketCaps[ticker] = marketCap;
+              console.log(`  ✅ Real data for ${ticker}: $${price.toFixed(2)} price, $${(marketCap / 1000000000).toFixed(2)}B market cap`);
+            } else {
+              console.error(`  ❌ SKIPPING ${ticker}: Could not get market cap for ${year} (required for market cap strategy)`);
+              // Remove from available stocks since market cap is required
+              availableStocks.pop();
+              delete stockPrices[ticker];
+            }
+          } else {
+            // For equal weight strategies, market cap is not needed
+            stockMarketCaps[ticker] = 1; // Placeholder value
+            if (isETF(ticker)) {
+              console.log(`  ✅ ETF data for ${ticker}: $${price.toFixed(2)} price (market cap not applicable for ETFs)`);
+            } else {
+              console.log(`  ✅ Price data for ${ticker}: $${price.toFixed(2)} (equal weight strategy)`);
+            }
+          }
         } else {
-          console.error(`  ❌ SKIPPING ${ticker}: Could not get complete data for ${year}`);
+          console.error(`  ❌ SKIPPING ${ticker}: Could not get price data for ${year}`);
         }
       }
       
