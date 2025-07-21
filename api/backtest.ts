@@ -1309,46 +1309,184 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // Validate ticker format and catch common typos
-    const validatedTickers = [];
-    const tickerErrors = [];
+    // Comprehensive ticker validation system
+    const validatedTickers: string[] = [];
+    const tickerValidationResults: {
+      ticker: string;
+      status: 'valid' | 'corrected' | 'invalid' | 'no_data';
+      message: string;
+      correctedTo?: string;
+      hasHistoricalData?: boolean;
+      dataAvailableFrom?: string;
+      dataAvailableTo?: string;
+    }[] = [];
     
+    // Check for common typos first
+    const commonCorrections: Record<string, string> = {
+      'APPL': 'AAPL',
+      'MSFT.': 'MSFT',
+      'GOOGL.': 'GOOGL',
+      'AMZN.': 'AMZN',
+      'TSLA.': 'TSLA',
+      'FB': 'META',  // Facebook renamed to Meta
+      'BRKB': 'BRK.B',
+      'BRKA': 'BRK.A'
+    };
+    
+    // Process each ticker
     for (const ticker of tickers) {
       const cleanTicker = ticker.trim().toUpperCase();
       
-      // Check for common typos
-      const commonCorrections: Record<string, string> = {
-        'APPL': 'AAPL',
-        'MSFT.': 'MSFT',
-        'GOOGL.': 'GOOGL',
-        'AMZN.': 'AMZN',
-        'TSLA.': 'TSLA'
-      };
-      
-      if (commonCorrections[cleanTicker]) {
-        tickerErrors.push(`Did you mean "${commonCorrections[cleanTicker]}" instead of "${ticker}"?`);
+      // Check for empty ticker
+      if (!cleanTicker) {
+        tickerValidationResults.push({
+          ticker: ticker,
+          status: 'invalid',
+          message: 'Empty ticker symbol'
+        });
         continue;
       }
       
-      // Basic format validation (3-5 letters, no numbers)
-      if (!/^[A-Z]{1,5}$/.test(cleanTicker)) {
-        tickerErrors.push(`"${ticker}" is not a valid ticker format`);
+      // Check for common typos
+      if (commonCorrections[cleanTicker]) {
+        const correctedTicker = commonCorrections[cleanTicker];
+        tickerValidationResults.push({
+          ticker: ticker,
+          status: 'corrected',
+          message: `Corrected "${ticker}" to "${correctedTicker}"`,
+          correctedTo: correctedTicker
+        });
+        validatedTickers.push(correctedTicker);
+        continue;
+      }
+      
+      // Basic format validation (1-5 letters, optional .US suffix)
+      if (!/^[A-Z]{1,5}(\.US)?$/.test(cleanTicker)) {
+        tickerValidationResults.push({
+          ticker: ticker,
+          status: 'invalid',
+          message: `Invalid ticker format (expected 1-5 letters, got "${ticker}")`
+        });
         continue;
       }
       
       validatedTickers.push(cleanTicker);
     }
     
-    if (tickerErrors.length > 0) {
+    // Now validate tickers have actual data by checking with EODHD
+    console.log(`\n📋 VALIDATING TICKERS WITH EODHD API...`);
+    const finalValidTickers: string[] = [];
+    const problemTickers: string[] = [];
+    
+    for (const ticker of validatedTickers) {
+      try {
+        // Check if ticker has any historical data by trying to fetch data for start year
+        const testDate = `${startYear}-01-02`;
+        const testData = await fetchStockData(ticker, testDate, true); // bypass cache for validation
+        
+        if (testData && testData.price > 0) {
+          // Ticker has data - now check data availability range
+          const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+          
+          // Try to get earliest and latest available data (quick check)
+          const earliestCheck = await fetchStockData(ticker, `${startYear - 5}-01-02`, true);
+          const latestCheck = await fetchStockData(ticker, `${endYear}-12-31`, true);
+          
+          finalValidTickers.push(ticker);
+          
+          const validationResult = tickerValidationResults.find(r => 
+            r.ticker === ticker || r.correctedTo === ticker
+          );
+          
+          if (validationResult) {
+            validationResult.hasHistoricalData = true;
+            validationResult.dataAvailableFrom = earliestCheck ? `${startYear - 5} or earlier` : `Around ${startYear}`;
+            validationResult.dataAvailableTo = latestCheck ? `${endYear} or later` : `Around ${endYear}`;
+          } else {
+            tickerValidationResults.push({
+              ticker: ticker,
+              status: 'valid',
+              message: `Valid ticker with historical data`,
+              hasHistoricalData: true
+            });
+          }
+        } else {
+          // No data found for this ticker
+          problemTickers.push(ticker);
+          
+          const validationResult = tickerValidationResults.find(r => 
+            r.ticker === ticker || r.correctedTo === ticker
+          );
+          
+          if (validationResult) {
+            validationResult.status = 'no_data';
+            validationResult.message = `No historical data found for ${ticker} in EODHD`;
+            validationResult.hasHistoricalData = false;
+          } else {
+            tickerValidationResults.push({
+              ticker: ticker,
+              status: 'no_data',
+              message: `No historical data found in EODHD`,
+              hasHistoricalData: false
+            });
+          }
+        }
+      } catch (error) {
+        // API error or ticker doesn't exist
+        problemTickers.push(ticker);
+        
+        const validationResult = tickerValidationResults.find(r => 
+          r.ticker === ticker || r.correctedTo === ticker
+        );
+        
+        if (validationResult) {
+          validationResult.status = 'no_data';
+          validationResult.message = `Failed to fetch data: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          validationResult.hasHistoricalData = false;
+        } else {
+          tickerValidationResults.push({
+            ticker: ticker,
+            status: 'no_data',
+            message: `Failed to fetch data from EODHD`,
+            hasHistoricalData: false
+          });
+        }
+      }
+    }
+    
+    // Log validation summary
+    console.log(`\n✅ VALID TICKERS: ${finalValidTickers.length}`);
+    finalValidTickers.forEach(ticker => console.log(`   ✓ ${ticker}`));
+    
+    if (problemTickers.length > 0) {
+      console.log(`\n❌ PROBLEM TICKERS: ${problemTickers.length}`);
+      problemTickers.forEach(ticker => console.log(`   ✗ ${ticker}`));
+    }
+    
+    // Return detailed validation results if there are any issues
+    const hasErrors = tickerValidationResults.some(r => r.status === 'invalid' || r.status === 'no_data');
+    
+    if (hasErrors || finalValidTickers.length === 0) {
       return res.status(400).json({
-        error: 'Invalid tickers found',
-        ticker_errors: tickerErrors,
-        message: 'Please correct the ticker symbols and try again'
+        error: 'Ticker validation failed',
+        validation_results: tickerValidationResults,
+        valid_tickers: finalValidTickers,
+        problem_tickers: problemTickers,
+        message: finalValidTickers.length > 0 
+          ? `Found ${problemTickers.length} invalid ticker(s). You can proceed with ${finalValidTickers.length} valid ticker(s): ${finalValidTickers.join(', ')}`
+          : 'No valid tickers found. Please check your ticker symbols and try again.'
       });
     }
+    
+    // Log any corrections made
+    const corrections = tickerValidationResults.filter(r => r.status === 'corrected');
+    if (corrections.length > 0) {
+      console.log(`\n🔧 TICKER CORRECTIONS MADE:`);
+      corrections.forEach(c => console.log(`   ${c.ticker} → ${c.correctedTo}`));
+    }
 
-    // Use validated tickers for the rest of the processing
-    const processedTickers = validatedTickers;
+    // Use only valid tickers for processing
+    const processedTickers = finalValidTickers;
     
     // Check cache first (unless bypassed)
     const tickerString = processedTickers.sort().join(',');
