@@ -14,6 +14,20 @@ import {
 } from '../external/eodhApi';
 import type { TickerCacheData, FillCacheResults } from '../_types';
 
+// Progress callback interface
+export interface FillCacheProgress {
+  processed: number;
+  total: number;
+  percentage: number;
+  currentTicker?: string;
+  successful: number;
+  failed: number;
+  batchNumber?: number;
+  totalBatches?: number;
+}
+
+export type ProgressCallback = (progress: FillCacheProgress) => void;
+
 // Legacy individual cache functions (still needed for fillCache)
 export async function getSharesOutstandingForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<number | null> {
   try {
@@ -257,16 +271,15 @@ export async function getMarketCapForYear(ticker: string, year: number, bypassCa
   }
 }
 
-// Fill cache function - populates cache with complete ticker histories
-// COMPLETELY REMOVES individual cache operations, fetches directly from EODHD API
-export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
+// Fill cache function with progress reporting
+export async function fillCacheWithProgress(tickers: string[], progressCallback?: ProgressCallback): Promise<FillCacheResults> {
   const results: FillCacheResults = {
     success: [],
     errors: [],
     warnings: []
   };
 
-  logger.info(`Starting cache population for ${tickers.length} tickers (BATCH PROCESSING MODE)`);
+  logger.info(`Starting cache population for ${tickers.length} tickers (BATCH PROCESSING MODE WITH PROGRESS)`);
   
   // Get current year for date range
   const currentYear = new Date().getFullYear();
@@ -286,6 +299,8 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
   const totalBatches = Math.ceil(tickers.length / BATCH_SIZE);
   logger.info(`📦 Processing ${tickers.length} tickers in ${totalBatches} batches of ${BATCH_SIZE}`);
   
+  let processed = 0;
+  
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * BATCH_SIZE;
     const batchEnd = Math.min(batchStart + BATCH_SIZE, tickers.length);
@@ -296,6 +311,20 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
     
     // Process all tickers in current batch
     for (const ticker of batchTickers) {
+      // Report progress before processing each ticker
+      if (progressCallback) {
+        progressCallback({
+          processed,
+          total: tickers.length,
+          percentage: (processed / tickers.length) * 100,
+          currentTicker: ticker,
+          successful: results.success.length,
+          failed: results.errors.length,
+          batchNumber: batchIndex + 1,
+          totalBatches
+        });
+      }
+      
       try {
         logger.debug(`Processing ${ticker}...`);
         
@@ -401,21 +430,37 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
         await storeFailedTicker(ticker, errorMsg);
         logger.error(`${ticker}: Failed to process - ${tickerError}`);
       }
+      
+      processed++;
     }
     
     const batchTime = Date.now() - batchStartTime;
     logger.success(`✅ BATCH ${batchIndex + 1}/${totalBatches} COMPLETE: ${batchTickers.length} tickers processed in ${(batchTime/1000).toFixed(1)}s`);
     
-    // Progress update every 5 batches
+    // Progress update every 5 batches or at completion
     if ((batchIndex + 1) % PROGRESS_UPDATE_INTERVAL === 0 || batchIndex + 1 === totalBatches) {
-      const progress = ((batchIndex + 1) / totalBatches * 100).toFixed(1);
-      const processed = Math.min(batchEnd, tickers.length);
+      const progress = ((processed) / tickers.length * 100);
       const remaining = tickers.length - processed;
       
-      logger.info(`📊 PROGRESS UPDATE: ${progress}% complete (${processed}/${tickers.length} tickers)`);
+      logger.info(`📊 PROGRESS UPDATE: ${progress.toFixed(1)}% complete (${processed}/${tickers.length} tickers)`);
       logger.info(`   ✅ Success: ${results.success.length}, ❌ Errors: ${results.errors.length}, ⚠️  Warnings: ${results.warnings.length}`);
       logger.info(`   ⏱️  Average: ${(batchTime/(batchTickers.length * 1000)).toFixed(2)}s per ticker`);
-      logger.info(`   📈 Progress Bar: [${'█'.repeat(Math.floor(parseFloat(progress)/5))}${'-'.repeat(20-Math.floor(parseFloat(progress)/5))}] ${progress}%`);
+      logger.info(`   📈 Progress Bar: [${'█'.repeat(Math.floor(progress/5))}${'-'.repeat(20-Math.floor(progress/5))}] ${progress.toFixed(1)}%`);
+      
+      // Send progress callback
+      if (progressCallback) {
+        progressCallback({
+          processed,
+          total: tickers.length,
+          percentage: progress,
+          currentTicker: undefined,
+          successful: results.success.length,
+          failed: results.errors.length,
+          batchNumber: batchIndex + 1,
+          totalBatches
+        });
+      }
+      
       if (remaining > 0) {
         logger.info(`   ⏳ Remaining: ${remaining} tickers (${Math.ceil(remaining/BATCH_SIZE)} batches)`);
       }
@@ -424,5 +469,26 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
   
   logger.success(`🎉 FILL CACHE COMPLETE: ${results.success.length} success, ${results.errors.length} errors, ${results.warnings.length} warnings`);
   logger.info(`📊 FINAL STATS: Processed ${tickers.length} tickers in ${totalBatches} batches`);
+  
+  // Final progress callback
+  if (progressCallback) {
+    progressCallback({
+      processed: tickers.length,
+      total: tickers.length,
+      percentage: 100,
+      currentTicker: undefined,
+      successful: results.success.length,
+      failed: results.errors.length,
+      batchNumber: totalBatches,
+      totalBatches
+    });
+  }
+  
   return results;
+}
+
+// Original fill cache function for backward compatibility
+export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
+  return fillCacheWithProgress(tickers);
+}
 }

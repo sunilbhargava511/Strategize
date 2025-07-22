@@ -21,7 +21,8 @@ export {
   getAdjustedPriceForYear,
   getMarketCapForYear,
   getSharesOutstandingForYear,
-  fillCache
+  fillCache,
+  fillCacheWithProgress
 } from './data/dataProcessing';
 
 // Re-export external API functions

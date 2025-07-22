@@ -7,6 +7,7 @@ import {
   fillCache,
   validateCacheCoverage
 } from './_cacheUtils';
+import { fillCacheWithProgress } from './data/dataProcessing';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -73,7 +74,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.log(`🔄 FILL CACHE: Starting to fill cache for ${tickers.length} tickers`);
       
       try {
-        const results = await fillCache(tickers);
+        const results = await fillCacheWithProgress(tickers, (progress) => {
+          // For now, just log progress - we'll implement streaming later
+          console.log(`📊 PROGRESS: ${progress.processed}/${progress.total} tickers (${progress.percentage.toFixed(1)}%)`);
+        });
         
         console.log(`✅ FILL CACHE COMPLETE: ${results.success.length} success, ${results.errors.length} errors, ${results.warnings.length} warnings`);
         
