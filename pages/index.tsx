@@ -682,6 +682,63 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Simulation History Card */}
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-900">Simulation History</h2>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    View and manage your analysis history
+                  </p>
+                  
+                  <button
+                    onClick={() => setShowCacheManagement(true)}
+                    className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors font-medium"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <span>View Simulation History</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Ready to Analyze Card */}
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-sm p-8 text-center">
+                <h3 className="text-2xl font-bold text-gray-900 mb-6">Ready to Analyze?</h3>
+                <button
+                  onClick={handleRunAnalysis}
+                  disabled={isRunning || detectedTickers.length === 0}
+                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 
+                           disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-4 px-8 
+                           rounded-xl transition-all transform hover:scale-105 active:scale-95
+                           flex items-center justify-center space-x-3 text-lg shadow-lg"
+                >
+                  {isRunning ? (
+                    <>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                      <span>Running Analysis...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Run Strategy Analysis</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
               {/* Cache Management Card */}
               <div className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="flex items-center space-x-3 mb-6">
@@ -821,33 +878,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Ready to Analyze Card */}
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-sm p-8 text-center">
-                <h3 className="text-2xl font-bold text-gray-900 mb-6">Ready to Analyze?</h3>
-                <button
-                  onClick={handleRunAnalysis}
-                  disabled={isRunning || detectedTickers.length === 0}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 
-                           disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-4 px-8 
-                           rounded-xl transition-all transform hover:scale-105 active:scale-95
-                           flex items-center justify-center space-x-3 text-lg shadow-lg"
-                >
-                  {isRunning ? (
-                    <>
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                      <span>Running Analysis...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>Run Strategy Analysis</span>
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
 
             {/* Right Column - Results */}
