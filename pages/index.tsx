@@ -23,6 +23,7 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [showCacheManagement, setShowCacheManagement] = useState(false)
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
@@ -75,6 +76,10 @@ export default function Home() {
       const text = event.target?.result as string
       let uploadedTickers: string[] = []
 
+      // Store the filename without extension
+      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "")
+      setUploadedFileName(fileNameWithoutExt)
+      
       // Handle different file formats
       if (file.name.endsWith('.csv')) {
         // Parse CSV - handle both comma and newline separated
@@ -232,7 +237,8 @@ export default function Home() {
           startYear: configuration.startYear,
           endYear: configuration.endYear,
           initialInvestment: configuration.initialInvestment,
-          bypass_cache: !configuration.useCache
+          bypass_cache: !configuration.useCache,
+          customName: uploadedFileName
         })
       })
 

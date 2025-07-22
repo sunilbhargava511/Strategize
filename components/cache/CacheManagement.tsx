@@ -361,20 +361,32 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
           <div className="flex items-center space-x-3">
             <span className="text-3xl">💾</span>
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">Cache Management</h2>
+              <h2 className="text-2xl font-semibold text-gray-900">Simulation History</h2>
               <p className="text-sm text-gray-600">
-                View and manage cached analysis results ({analyses.length} total, {formatSize(totalSize)})
+                View and manage your analysis history ({analyses.length} total, {formatSize(totalSize)})
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+          <div className="flex items-center space-x-2">
+            <button
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Advanced Settings"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         {/* Cache Statistics */}
@@ -480,26 +492,10 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
           </div>
         </div>
 
-        {/* Advanced Controls */}
-        <div className="border-b border-gray-200 bg-red-50">
-          <div className="p-4">
-            <button
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center space-x-2 text-red-700 hover:text-red-900 font-medium"
-            >
-              <span className="text-lg">⚠️</span>
-              <span>Advanced Cache Controls</span>
-              <svg 
-                className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            
-            {showAdvanced && (
+        {/* Advanced Controls - shown when gear icon is clicked */}
+        {showAdvanced && (
+          <div className="border-b border-gray-200 bg-red-50">
+            <div className="p-4">
               <div className="mt-4 space-y-4">
                 <div className="bg-white border border-red-200 rounded-lg p-4">
                   <div className="flex items-center space-x-2 mb-3">
@@ -590,9 +586,9 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                   </div>
                 </div>
               </div>
-            )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Content */}
         <div className="overflow-auto max-h-[60vh]">
@@ -625,7 +621,6 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Period</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Investment</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Cached</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Expires</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Size</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-900">Actions</th>
                   </tr>
@@ -699,7 +694,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                       <td className="px-4 py-3">
                         <div>
                           <div className="font-medium text-gray-900">
-                            {analysis.tickerCount} tickers
+                            {analysis.tickers.length} tickers
                           </div>
                           <div className="text-sm text-gray-600 max-w-xs truncate">
                             {analysis.tickers.slice(0, 5).join(', ')}
@@ -718,17 +713,6 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">
                         {formatDate(analysis.cachedAt || 'Unknown')}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        {analysis.isPermanent ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                            ♾️ Permanent
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                            ⏰ 24h
-                          </span>
-                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {formatSize(analysis.size || 0)}

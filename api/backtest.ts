@@ -1722,8 +1722,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const apiStartTime = Date.now();
     console.log('=== BACKTEST API CALLED (v2) ===');
-    const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
-    console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache });
+    const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false, customName } = req.body;
+    console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache, customName });
     
     // Date validation: No analysis beyond Jan 1 of current year
     const currentYear = new Date().getFullYear();
@@ -2351,8 +2351,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tickerCount: processedTickers.length,
         tickers: processedTickers,
         originalTickerCount: finalValidTickers.length,
-        isOptimized: isLargePortfolioOptimized
+        isOptimized: isLargePortfolioOptimized,
+        analysisDate: new Date().toISOString()
       },
+      customName,
       historicalData, // Include the actual data used in calculations
       debug: {
         equalWeightResult: equalWeightBuyHold.finalValue,

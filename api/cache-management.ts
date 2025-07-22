@@ -65,15 +65,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       // Get ticker statistics from market data cache
       const [priceKeys, marketCapKeys, sharesKeys] = await Promise.all([
-        cache.keys('price:*'),
+        cache.keys('adjusted-price:*'),
         cache.keys('market-cap:*'),
-        cache.keys('shares:*')
+        cache.keys('shares-outstanding:*')
       ]);
       
       // Extract unique tickers from cache keys
       const uniqueTickers = new Set<string>();
       
-      // Parse price keys (format: price:TICKER:YEAR)
+      // Parse price keys (format: adjusted-price:TICKER:YEAR)
       priceKeys.forEach(key => {
         const parts = key.split(':');
         if (parts.length >= 3) {
@@ -89,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       });
       
-      // Parse shares keys (format: shares:TICKER:YEAR)
+      // Parse shares keys (format: shares-outstanding:TICKER:YEAR)
       sharesKeys.forEach(key => {
         const parts = key.split(':');
         if (parts.length >= 3) {
