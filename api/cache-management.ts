@@ -299,26 +299,50 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log('☢️ NUCLEAR: Clearing ALL cache data...');
         
-        // Get all keys
-        const allKeys = await cache.keys('*');
-        
-        if (allKeys.length === 0) {
+        // Use FLUSHDB for nuclear option instead of KEYS + MDEL
+        // This avoids the Redis KEYS command limit
+        try {
+          await cache.flushdb();
+          console.log(`✅ Successfully cleared ALL cache using FLUSHDB`);
+          
           return res.status(200).json({
             success: true,
-            deletedCount: 0,
-            message: 'Cache is already empty'
+            deletedCount: 'ALL',
+            message: `NUCLEAR CLEAR: Deleted ALL cache entries using FLUSHDB`
           });
-        }
+        } catch (flushError) {
+          console.error('FLUSHDB failed, trying KEYS approach:', flushError);
+          
+          // Fallback to KEYS approach with error handling
+          try {
+            const allKeys = await cache.keys('*');
+            
+            if (allKeys.length === 0) {
+              return res.status(200).json({
+                success: true,
+                deletedCount: 0,
+                message: 'Cache is already empty'
+              });
+            }
 
-        const deletedCount = await cache.mdel(allKeys);
-        
-        console.log(`✅ Successfully cleared ALL cache: ${deletedCount} entries`);
-        
-        return res.status(200).json({
-          success: true,
-          deletedCount,
-          message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
-        });
+            const deletedCount = await cache.mdel(allKeys);
+            console.log(`✅ Successfully cleared ALL cache: ${deletedCount} entries`);
+            
+            return res.status(200).json({
+              success: true,
+              deletedCount,
+              message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
+            });
+          } catch (keysError) {
+            console.error('Both FLUSHDB and KEYS approaches failed:', keysError);
+            return res.status(500).json({
+              success: false,
+              error: 'Nuclear clear failed',
+              message: 'Unable to clear cache due to Redis limitations. Please contact support.',
+              details: keysError.message
+            });
+          }
+        }
 
       } else if (action === 'clear_old_cache') {
         // Clear old individual key cache structure (adjusted-price:*, market-cap:*, shares-outstanding:*)
