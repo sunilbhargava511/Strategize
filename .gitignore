@@ -30,9 +30,9 @@ out/
 # Vercel
 .vercel/
 
-# Cache directories
-cache/
-temp/
+# Cache directories (but not api/cache)
+/cache/
+/temp/
 
 # Build outputs
 dist/
