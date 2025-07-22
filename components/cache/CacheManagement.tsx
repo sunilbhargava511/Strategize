@@ -36,6 +36,14 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [cacheStats, setCacheStats] = useState<any>(null)
   const [fillCacheInput, setFillCacheInput] = useState('')
   const [fillCacheLoading, setFillCacheLoading] = useState(false)
+  const [fillCacheProgress, setFillCacheProgress] = useState<{
+    processed: number;
+    total: number;
+    percentage: number;
+    currentTicker?: string;
+    successful: number;
+    failed: number;
+  } | null>(null)
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [viewTickerInput, setViewTickerInput] = useState('')
   const [viewTickerData, setViewTickerData] = useState<any>(null)
@@ -355,6 +363,31 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
     }
 
     setFillCacheLoading(true)
+    setFillCacheProgress({
+      processed: 0,
+      total: tickers.length,
+      percentage: 0,
+      successful: 0,
+      failed: 0
+    })
+
+    // Start progress simulation
+    const progressInterval = setInterval(() => {
+      setFillCacheProgress(prev => {
+        if (!prev) return null
+        
+        // Estimate progress based on time elapsed (rough approximation)
+        const newProcessed = Math.min(prev.processed + 1, prev.total - 1)
+        const newPercentage = (newProcessed / prev.total) * 100
+        
+        return {
+          ...prev,
+          processed: newProcessed,
+          percentage: newPercentage
+        }
+      })
+    }, (estimatedTime * 60 * 1000) / tickers.length) // Distribute progress over estimated time
+    
     try {
       const response = await fetch('/api/fill-cache', {
         method: 'POST',
@@ -365,18 +398,35 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
         })
       })
 
+      // Clear progress simulation
+      clearInterval(progressInterval)
+
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
           const successCount = data.results?.successful?.length || data.results?.success?.length || 0
           const errorCount = data.results?.errors?.length || 0
           const warningCount = data.results?.warnings?.length || 0
-          const successList = data.results?.successful?.join(', ') || data.results?.success?.join(', ') || 'None'
-          const errorList = data.results?.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
           
-          alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
-          setFillCacheInput('')
-          fetchCachedAnalyses() // Refresh cache stats
+          // Update final progress
+          setFillCacheProgress({
+            processed: tickers.length,
+            total: tickers.length,
+            percentage: 100,
+            successful: successCount,
+            failed: errorCount
+          })
+          
+          // Show progress for a moment before showing results
+          setTimeout(() => {
+            const successList = data.results?.successful?.join(', ') || data.results?.success?.join(', ') || 'None'
+            const errorList = data.results?.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
+            
+            alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
+            setFillCacheInput('')
+            fetchCachedAnalyses() // Refresh cache stats
+            setFillCacheProgress(null) // Clear progress
+          }, 1500)
         } else {
           alert(`Cache fill failed: ${data.message}`)
         }
@@ -385,8 +435,10 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
         throw new Error(errorData.error || 'Fill cache failed')
       }
     } catch (error: any) {
+      clearInterval(progressInterval)
       alert(`Failed to fill cache: ${error.message}`)
       console.error('Fill cache error:', error)
+      setFillCacheProgress(null)
     } finally {
       setFillCacheLoading(false)
     }
@@ -767,6 +819,36 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                         >
                           {fillCacheLoading ? '⏳ Filling Cache...' : '💾 Fill Cache'}
                         </button>
+                        
+                        {/* Progress Display */}
+                        {fillCacheProgress && (
+                          <div className="mt-3 space-y-2">
+                            <div className="flex justify-between text-xs text-gray-600">
+                              <span>Processing tickers...</span>
+                              <span>{fillCacheProgress.processed}/{fillCacheProgress.total} ({fillCacheProgress.percentage.toFixed(1)}%)</span>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div 
+                                className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                                style={{ width: `${fillCacheProgress.percentage}%` }}
+                              />
+                            </div>
+                            
+                            {/* Status Indicators */}
+                            <div className="flex justify-between text-xs">
+                              <span className="text-green-600">✅ Success: {fillCacheProgress.successful}</span>
+                              <span className="text-red-600">❌ Failed: {fillCacheProgress.failed}</span>
+                            </div>
+                            
+                            {fillCacheProgress.currentTicker && (
+                              <div className="text-xs text-gray-500">
+                                Currently processing: <span className="font-medium">{fillCacheProgress.currentTicker}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
