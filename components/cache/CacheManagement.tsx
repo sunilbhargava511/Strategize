@@ -37,6 +37,9 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [fillCacheInput, setFillCacheInput] = useState('')
   const [fillCacheLoading, setFillCacheLoading] = useState(false)
   const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [viewTickerInput, setViewTickerInput] = useState('')
+  const [viewTickerData, setViewTickerData] = useState<any>(null)
+  const [viewTickerLoading, setViewTickerLoading] = useState(false)
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -302,6 +305,43 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
       console.error('Validate cache error:', error)
     } finally {
       setFillCacheLoading(false)
+    }
+  }
+
+  const viewTickerCache = async () => {
+    const ticker = viewTickerInput.trim().toUpperCase()
+    if (!ticker) {
+      alert('Please enter a ticker symbol')
+      return
+    }
+
+    setViewTickerLoading(true)
+    try {
+      const response = await fetch(`/api/cache-management?key=${encodeURIComponent(`ticker-data:${ticker}`)}`);
+      
+      if (response.ok) {
+        const data = await response.json()
+        setViewTickerData({
+          ticker,
+          data: data.data,
+          found: true,
+          yearCount: data.data ? Object.keys(data.data).length : 0
+        })
+      } else if (response.status === 404) {
+        setViewTickerData({
+          ticker,
+          data: null,
+          found: false,
+          yearCount: 0
+        })
+      } else {
+        throw new Error('Failed to fetch ticker data')
+      }
+    } catch (error: any) {
+      alert(`Failed to view ticker data: ${error.message}`)
+      console.error('View ticker error:', error)
+    } finally {
+      setViewTickerLoading(false)
     }
   }
 
@@ -712,6 +752,81 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* View Ticker Data Section */}
+                <div className="bg-white border border-purple-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <span className="text-xl">🔍</span>
+                    <h4 className="font-semibold text-purple-900">View Ticker Cache Data</h4>
+                  </div>
+                  <p className="text-sm text-purple-700 mb-4">
+                    Inspect the cached data for a specific ticker to verify what's stored.
+                  </p>
+                  
+                  <div className="flex items-end space-x-3 mb-4">
+                    <div className="flex-1">
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Ticker Symbol</label>
+                      <input
+                        type="text"
+                        placeholder="e.g., AAPL"
+                        value={viewTickerInput}
+                        onChange={(e) => setViewTickerInput(e.target.value.toUpperCase())}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        onKeyDown={(e) => e.key === 'Enter' && viewTickerCache()}
+                      />
+                    </div>
+                    <button
+                      onClick={viewTickerCache}
+                      disabled={viewTickerLoading || !viewTickerInput.trim()}
+                      className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                    >
+                      {viewTickerLoading ? '🔍 Loading...' : '🔍 View Data'}
+                    </button>
+                  </div>
+
+                  {/* Results Display */}
+                  {viewTickerData && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
+                      <div className="flex items-center justify-between mb-3">
+                        <h5 className="font-medium text-gray-900">
+                          {viewTickerData.found ? '✅' : '❌'} Cache Data for {viewTickerData.ticker}
+                        </h5>
+                        <button
+                          onClick={() => setViewTickerData(null)}
+                          className="text-gray-400 hover:text-gray-600"
+                          title="Close"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      
+                      {viewTickerData.found ? (
+                        <div>
+                          <div className="text-sm text-gray-600 mb-3">
+                            <strong>Years cached:</strong> {viewTickerData.yearCount} years
+                          </div>
+                          
+                          <div className="max-h-64 overflow-y-auto bg-white border rounded p-3">
+                            <pre className="text-xs text-gray-800 whitespace-pre-wrap">
+                              {JSON.stringify(viewTickerData.data, null, 2)}
+                            </pre>
+                          </div>
+                          
+                          <div className="mt-3 text-xs text-gray-500">
+                            Data format: Each year contains price, market_cap, and shares_outstanding
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center py-4">
+                          <div className="text-gray-500 mb-2">❌ No cache data found for {viewTickerData.ticker}</div>
+                          <div className="text-xs text-gray-400">
+                            This ticker has not been cached yet. Use Fill Cache to populate it.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="bg-white border border-red-200 rounded-lg p-4">
