@@ -491,4 +491,3 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
 export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
   return fillCacheWithProgress(tickers);
 }
-}
