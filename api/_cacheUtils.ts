@@ -726,11 +726,11 @@ export async function fillCache(tickers: string[]): Promise<{
       
       for (let year = minYear; year <= maxYear; year++) {
         try {
-          // Fetch all three data types for this year
+          // Fetch all three data types for this year (bypass individual caching)
           const [priceData, marketCap, sharesOutstanding] = await Promise.all([
-            getAdjustedPriceForYear(ticker, year, false, null),
-            getMarketCapForYear(ticker, year, false, null),
-            getSharesOutstandingForYear(ticker, year, false, null)
+            getAdjustedPriceForYear(ticker, year, true, null),
+            getMarketCapForYear(ticker, year, true, null),
+            getSharesOutstandingForYear(ticker, year, true, null)
           ]);
           
           // Only add entry if we have price data (stock was trading)
