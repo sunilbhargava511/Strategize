@@ -766,48 +766,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       endYear >= currentYear ? `${currentYear}-01-02` : `${endYear}-12-31`
     ];
     
-    // CACHE-BASED DATA LOADING APPROACH (unless bypassing cache)
-    let cachedTickerData: any = {};
+    // CACHE-BASED DATA LOADING APPROACH - REQUIRED
+    console.log(`\n🔄 CACHE VALIDATION PHASE: Checking ticker cache coverage...`);
     
-    if (!bypass_cache) {
-      console.log(`\n🔄 CACHE VALIDATION PHASE: Checking ticker cache coverage...`);
-      
-      // Validate that all tickers are in the new cache format
-      const allTickersNeeded = ['SPY', ...processedTickers];
-      const missingTickers = await validateCacheCoverage(allTickersNeeded);
-      
-      if (missingTickers.length > 0) {
-        console.log(`❌ CACHE MISS: ${missingTickers.length} tickers not cached: ${missingTickers.slice(0, 10).join(', ')}${missingTickers.length > 10 ? ` +${missingTickers.length - 10} more` : ''}`);
-        return res.status(400).json({
-          error: 'Tickers not cached',
-          message: `${missingTickers.length} tickers need to be cached before analysis can run.`,
-          missingTickers,
-          suggestion: 'Please run the Fill Cache operation first, or use bypass_cache=true for on-demand data fetching.',
-          action: 'fill_cache_required'
-        });
-      }
-      
-      console.log(`✅ CACHE VALIDATION COMPLETE: All ${allTickersNeeded.length} tickers are cached`);
-      
-      // Load data from cache into runtime structure
-      console.log(`\n📊 DATA LOADING PHASE: Loading ticker data from cache...`);
-      const { data, missing: stillMissing } = await getDataFromCache(allTickersNeeded);
-      cachedTickerData = data;
-      
-      if (stillMissing.length > 0) {
-        return res.status(500).json({
-          error: 'Cache consistency error',
-          message: `Validation passed but tickers are missing: ${stillMissing.join(', ')}`,
-          missingTickers: stillMissing
-        });
-      }
-      
-      console.log(`✅ DATA LOADING COMPLETE: Loaded data for ${Object.keys(cachedTickerData).length} tickers`);
-      console.log(`🎯 Strategy calculations will use 100% cached data - ZERO EODHD API calls!`);
-    } else {
-      console.log(`\n⚡ CACHE BYPASSED: Will fetch data on-demand during calculations`);
-      // cachedTickerData remains empty, will use on-demand fetching
+    // Validate that all tickers are in the new cache format
+    const allTickersNeeded = ['SPY', ...processedTickers];
+    const missingTickers = await validateCacheCoverage(allTickersNeeded);
+    
+    if (missingTickers.length > 0) {
+      console.log(`❌ CACHE MISS: ${missingTickers.length} tickers not cached: ${missingTickers.slice(0, 10).join(', ')}${missingTickers.length > 10 ? ` +${missingTickers.length - 10} more` : ''}`);
+      return res.status(400).json({
+        error: 'Tickers not cached',
+        message: `${missingTickers.length} tickers need to be cached before analysis can run.`,
+        missingTickers,
+        suggestion: 'Please run the Fill Cache operation first.',
+        action: 'fill_cache_required'
+      });
     }
+    
+    console.log(`✅ CACHE VALIDATION COMPLETE: All ${allTickersNeeded.length} tickers are cached`);
+    
+    // Load data from cache into runtime structure
+    console.log(`\n📊 DATA LOADING PHASE: Loading ticker data from cache...`);
+    const { data: cachedTickerData, missing: stillMissing } = await getDataFromCache(allTickersNeeded);
+    
+    if (stillMissing.length > 0) {
+      return res.status(500).json({
+        error: 'Cache consistency error',
+        message: `Validation passed but tickers are missing: ${stillMissing.join(', ')}`,
+        missingTickers: stillMissing
+      });
+    }
+    
+    console.log(`✅ DATA LOADING COMPLETE: Loaded data for ${Object.keys(cachedTickerData).length} tickers`);
+    console.log(`🎯 Strategy calculations will use 100% cached data - ZERO EODHD API calls!`);
     
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
