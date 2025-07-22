@@ -36,6 +36,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [cacheStats, setCacheStats] = useState<any>(null)
   const [fillCacheInput, setFillCacheInput] = useState('')
   const [fillCacheLoading, setFillCacheLoading] = useState(false)
+  const [csvFile, setCsvFile] = useState<File | null>(null)
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -223,12 +224,54 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
     }
   }
 
-  const validateFillCache = async () => {
-    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
-    if (tickers.length === 0) {
-      alert('Please enter at least one ticker symbol')
-      return
+  const parseCSV = (csvContent: string): string[] => {
+    const lines = csvContent.split('\n')
+    const tickers = new Set<string>()
+    
+    for (const line of lines) {
+      if (line.trim()) {
+        // Split by comma and take the first column (ticker symbol)
+        const columns = line.split(',')
+        if (columns.length > 0) {
+          const ticker = columns[0].trim().replace(/['"]/g, '').toUpperCase()
+          if (ticker && ticker.length > 0 && ticker !== 'TICKER' && ticker !== 'SYMBOL') {
+            tickers.add(ticker)
+          }
+        }
+      }
     }
+    
+    return Array.from(tickers)
+  }
+
+  const getTickersFromInput = async (): Promise<string[]> => {
+    let tickers: string[] = []
+    
+    if (csvFile) {
+      // Parse CSV file
+      try {
+        const csvContent = await csvFile.text()
+        tickers = parseCSV(csvContent)
+      } catch (error) {
+        alert('Failed to read CSV file')
+        return []
+      }
+    } else if (fillCacheInput.trim()) {
+      // Parse manual input
+      tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    }
+    
+    if (tickers.length === 0) {
+      alert('Please enter ticker symbols manually or upload a CSV file')
+      return []
+    }
+    
+    return tickers
+  }
+
+  const validateFillCache = async () => {
+    const tickers = await getTickersFromInput()
+    if (tickers.length === 0) return
 
     setFillCacheLoading(true)
     try {
@@ -263,11 +306,8 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   }
 
   const fillCacheData = async () => {
-    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
-    if (tickers.length === 0) {
-      alert('Please enter at least one ticker symbol')
-      return
-    }
+    const tickers = await getTickersFromInput()
+    if (tickers.length === 0) return
 
     const estimatedTime = Math.ceil(tickers.length / 10)
     if (!confirm(`Fill cache for ${tickers.length} tickers?\n\nThis will fetch historical data from EODHD API.\nEstimated time: ~${estimatedTime} minutes\n\nContinue?`)) {
@@ -598,39 +638,68 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                     Pre-populate cache with historical data from EODHD API. This ensures fast simulations without API calls during analysis.
                   </p>
                   
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <h5 className="font-medium text-gray-900">Validate Cache Coverage</h5>
-                      <p className="text-xs text-gray-600">Check which tickers are already cached</p>
-                      <input
-                        type="text"
-                        placeholder="Enter tickers: AAPL,MSFT,GOOGL"
-                        value={fillCacheInput}
-                        onChange={(e) => setFillCacheInput(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                      />
-                      <button
-                        onClick={validateFillCache}
-                        disabled={fillCacheLoading || !fillCacheInput.trim()}
-                        className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
-                      >
-                        {fillCacheLoading ? '🔍 Validating...' : '🔍 Validate Cache'}
-                      </button>
+                  <div className="space-y-4">
+                    {/* Input Methods */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-gray-900">Manual Entry</h5>
+                        <input
+                          type="text"
+                          placeholder="Enter tickers: AAPL,MSFT,GOOGL"
+                          value={fillCacheInput}
+                          onChange={(e) => {
+                            setFillCacheInput(e.target.value)
+                            if (e.target.value.trim()) setCsvFile(null) // Clear CSV if manual input
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        />
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-gray-900">CSV Upload</h5>
+                        <input
+                          type="file"
+                          accept=".csv"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0] || null
+                            setCsvFile(file)
+                            if (file) setFillCacheInput('') // Clear manual input if CSV uploaded
+                          }}
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                        />
+                        {csvFile && (
+                          <div className="text-xs text-green-700">
+                            ✅ {csvFile.name} ({(csvFile.size / 1024).toFixed(1)} KB)
+                          </div>
+                        )}
+                      </div>
                     </div>
                     
-                    <div className="space-y-2">
-                      <h5 className="font-medium text-gray-900">Fill Cache</h5>
-                      <p className="text-xs text-gray-600">Fetch and cache historical data for missing tickers</p>
-                      <div className="text-xs text-gray-500 mb-2">
-                        Same ticker list as validation →
+                    {/* Action Buttons */}
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-gray-900">Validate Cache Coverage</h5>
+                        <p className="text-xs text-gray-600">Check which tickers are already cached</p>
+                        <button
+                          onClick={validateFillCache}
+                          disabled={fillCacheLoading || (!fillCacheInput.trim() && !csvFile)}
+                          className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                        >
+                          {fillCacheLoading ? '🔍 Validating...' : '🔍 Validate Cache'}
+                        </button>
                       </div>
-                      <button
-                        onClick={fillCacheData}
-                        disabled={fillCacheLoading || !fillCacheInput.trim()}
-                        className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
-                      >
-                        {fillCacheLoading ? '⏳ Filling Cache...' : '💾 Fill Cache'}
-                      </button>
+                      
+                      <div className="space-y-2">
+                        <h5 className="font-medium text-gray-900">Fill Cache</h5>
+                        <p className="text-xs text-gray-600">Fetch and cache historical data for missing tickers</p>
+                        <button
+                          onClick={fillCacheData}
+                          disabled={fillCacheLoading || (!fillCacheInput.trim() && !csvFile)}
+                          className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                        >
+                          {fillCacheLoading ? '⏳ Filling Cache...' : '💾 Fill Cache'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   
