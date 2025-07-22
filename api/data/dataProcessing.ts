@@ -4,7 +4,7 @@
 import { cache } from '../_upstashCache';
 import { CACHE_KEYS, DATES, SIZE_LIMITS } from '../_constants';
 import { logger } from '../_logger';
-import { setTickerInCache, storeFailedTicker, removeFailedTicker } from '../cache/cacheOperations';
+import { setTickerInCache, storeFailedTicker, removeFailedTicker, validateCacheCoverage } from '../cache/cacheOperations';
 import { 
   getSplitAdjustedPriceWithFallback, 
   getSharesOutstanding, 
@@ -279,7 +279,44 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
     warnings: []
   };
 
-  logger.info(`Starting cache population for ${tickers.length} tickers (BATCH PROCESSING MODE WITH PROGRESS)`);
+  logger.info(`Starting cache population for ${tickers.length} tickers (EFFICIENT MODE WITH CACHE CHECKING)`);
+  
+  // First, check which tickers are already cached vs missing
+  const { missing, eliminated } = await validateCacheCoverage(tickers);
+  
+  // Report already cached tickers
+  const alreadyCached = tickers.filter(t => !missing.includes(t) && !eliminated.find(e => e.ticker === t));
+  if (alreadyCached.length > 0) {
+    logger.info(`✅ ${alreadyCached.length} tickers already cached: ${alreadyCached.join(', ')}`);
+    results.success.push(...alreadyCached);
+  }
+  
+  // Report eliminated tickers
+  for (const elim of eliminated) {
+    results.errors.push({
+      ticker: elim.ticker,
+      error: `Previously failed: ${elim.reason}`
+    });
+    logger.warn(`❌ ${elim.ticker}: Previously failed - ${elim.reason}`);
+  }
+  
+  // Only process missing tickers
+  const tickersToProcess = missing;
+  logger.info(`🔄 Need to fetch ${tickersToProcess.length} missing tickers from API: ${tickersToProcess.join(', ')}`);
+  
+  if (tickersToProcess.length === 0) {
+    logger.success(`🎉 All ${tickers.length} tickers already cached! No API calls needed.`);
+    if (progressCallback) {
+      progressCallback({
+        processed: tickers.length,
+        total: tickers.length,
+        percentage: 100,
+        successful: results.success.length,
+        failed: results.errors.length
+      });
+    }
+    return results;
+  }
   
   // Get current year for date range
   const currentYear = new Date().getFullYear();
@@ -295,21 +332,21 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
     throw new Error('EODHD_API_TOKEN environment variable is required');
   }
   
-  // Process tickers in batches
-  const totalBatches = Math.ceil(tickers.length / BATCH_SIZE);
-  logger.info(`📦 Processing ${tickers.length} tickers in ${totalBatches} batches of ${BATCH_SIZE}`);
+  // Process missing tickers in batches
+  const totalBatches = Math.ceil(tickersToProcess.length / BATCH_SIZE);
+  logger.info(`📦 Processing ${tickersToProcess.length} missing tickers in ${totalBatches} batches of ${BATCH_SIZE}`);
   
-  let processed = 0;
+  let processed = results.success.length; // Start with already cached count
   
   for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
     const batchStart = batchIndex * BATCH_SIZE;
-    const batchEnd = Math.min(batchStart + BATCH_SIZE, tickers.length);
-    const batchTickers = tickers.slice(batchStart, batchEnd);
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, tickersToProcess.length);
+    const batchTickers = tickersToProcess.slice(batchStart, batchEnd);
     const batchStartTime = Date.now();
     
-    logger.info(`🔄 BATCH ${batchIndex + 1}/${totalBatches}: Processing tickers ${batchStart + 1}-${batchEnd} (${batchTickers.join(', ')})`);
+    logger.info(`🔄 BATCH ${batchIndex + 1}/${totalBatches}: Processing missing tickers ${batchStart + 1}-${batchEnd} (${batchTickers.join(', ')})`);
     
-    // Process all tickers in current batch
+    // Process all missing tickers in current batch
     for (const ticker of batchTickers) {
       // Report progress before processing each ticker
       if (progressCallback) {
