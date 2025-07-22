@@ -211,8 +211,8 @@ async function fetchStockData(ticker: string, date: string, bypassCache: boolean
       date: dayData.date || date,
       price: dayData.adjusted_close,
       adjusted_close: dayData.adjusted_close,
-      market_cap: marketCap,
-      shares_outstanding: sharesOutstanding
+      market_cap: marketCap || undefined,
+      shares_outstanding: sharesOutstanding || undefined
     };
     
     // Cache the combined result
