@@ -238,9 +238,17 @@ export async function getSharesOutstanding(ticker: string, date: string, apiToke
     
     const sharesOutstanding = await sharesResponse.json();
     
+    // Handle both string and number responses from EODHD API
+    let sharesValue: number | null = null;
     if (typeof sharesOutstanding === 'number' && sharesOutstanding > 0) {
-      logger.success(`Found historical shares outstanding for ${ticker} as of ${bestDate}: ${sharesOutstanding.toLocaleString()}`);
-      return sharesOutstanding;
+      sharesValue = sharesOutstanding;
+    } else if (typeof sharesOutstanding === 'string' && sharesOutstanding.trim() !== '') {
+      sharesValue = parseFloat(sharesOutstanding);
+    }
+    
+    if (sharesValue && sharesValue > 0) {
+      logger.success(`Found historical shares outstanding for ${ticker} as of ${bestDate}: ${sharesValue.toLocaleString()}`);
+      return sharesValue;
     }
     
     logger.debug(`Invalid shares outstanding value for ${ticker} on ${bestDate}: ${sharesOutstanding}`);
