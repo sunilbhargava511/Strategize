@@ -63,41 +63,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const backtestKeys = await cache.keys('backtest:*');
       console.log(`Found ${backtestKeys.length} cached analysis results`);
       
-      // Get ticker statistics from market data cache
-      const [priceKeys, marketCapKeys, sharesKeys] = await Promise.all([
-        cache.keys('adjusted-price:*'),
-        cache.keys('market-cap:*'),
-        cache.keys('shares-outstanding:*')
-      ]);
+      // Get ticker statistics from new ticker-based cache structure
+      console.log('Fetching ticker-based cache statistics...');
       
-      // Extract unique tickers from cache keys
-      const uniqueTickers = new Set<string>();
+      let tickerDataKeys: string[] = [];
+      let uniqueTickers = new Set<string>();
+      let totalDataPoints = 0;
       
-      // Parse price keys (format: adjusted-price:TICKER:YEAR)
-      priceKeys.forEach(key => {
-        const parts = key.split(':');
-        if (parts.length >= 3) {
-          uniqueTickers.add(parts[1]);
+      try {
+        // Get all ticker-data keys
+        tickerDataKeys = await cache.keys('ticker-data:*');
+        console.log(`Found ${tickerDataKeys.length} ticker-data keys`);
+        
+        // Extract tickers and count data points
+        for (const key of tickerDataKeys) {
+          const ticker = key.replace('ticker-data:', '');
+          uniqueTickers.add(ticker);
+          
+          // Get the data to count years
+          try {
+            const tickerData = await cache.get(key);
+            if (tickerData && typeof tickerData === 'object') {
+              const yearCount = Object.keys(tickerData).length;
+              totalDataPoints += yearCount; // Each year is one data point with price/market_cap/shares
+            }
+          } catch (dataError) {
+            console.warn(`Error reading data for ${ticker}:`, dataError);
+          }
         }
-      });
-      
-      // Parse market cap keys (format: market-cap:TICKER:YEAR)
-      marketCapKeys.forEach(key => {
-        const parts = key.split(':');
-        if (parts.length >= 3) {
-          uniqueTickers.add(parts[1]);
+      } catch (keysError) {
+        console.error('Error fetching ticker-data keys:', keysError);
+        // Fallback: try to use SCAN if KEYS fails
+        try {
+          console.log('Attempting to use SCAN for ticker statistics...');
+          // Note: This would require implementing SCAN, for now we'll return empty stats
+          uniqueTickers = new Set();
+          totalDataPoints = 0;
+        } catch (scanError) {
+          console.error('SCAN fallback also failed:', scanError);
         }
-      });
+      }
       
-      // Parse shares keys (format: shares-outstanding:TICKER:YEAR)
-      sharesKeys.forEach(key => {
-        const parts = key.split(':');
-        if (parts.length >= 3) {
-          uniqueTickers.add(parts[1]);
-        }
-      });
-      
-      console.log(`Found ${uniqueTickers.size} unique tickers in cache`);
+      console.log(`Found ${uniqueTickers.size} unique tickers with ${totalDataPoints} total data points`);
       
       if (backtestKeys.length === 0) {
         return res.status(200).json({
@@ -107,10 +114,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cacheStatistics: {
             uniqueTickers: uniqueTickers.size,
             tickersList: Array.from(uniqueTickers).sort(),
-            priceDataPoints: priceKeys.length,
-            marketCapDataPoints: marketCapKeys.length,
-            sharesDataPoints: sharesKeys.length,
-            totalDataPoints: priceKeys.length + marketCapKeys.length + sharesKeys.length
+            totalYearDataPoints: totalDataPoints,
+            cacheStructure: 'ticker-based',
+            averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0
           }
         });
       }
@@ -178,10 +184,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cacheStatistics: {
           uniqueTickers: uniqueTickers.size,
           tickersList: Array.from(uniqueTickers).sort(),
-          priceDataPoints: priceKeys.length,
-          marketCapDataPoints: marketCapKeys.length,
-          sharesDataPoints: sharesKeys.length,
-          totalDataPoints: priceKeys.length + marketCapKeys.length + sharesKeys.length
+          totalYearDataPoints: totalDataPoints,
+          cacheStructure: 'ticker-based',
+          averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0
         }
       });
 
@@ -313,6 +318,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           success: true,
           deletedCount,
           message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
+        });
+
+      } else if (action === 'clear_old_cache') {
+        // Clear old individual key cache structure (adjusted-price:*, market-cap:*, shares-outstanding:*)
+        if (confirmationCode !== 'CLEAR_OLD_CACHE') {
+          return res.status(400).json({
+            error: 'Invalid confirmation code. This is a protected operation.'
+          });
+        }
+
+        console.log('🧹 MIGRATION: Clearing old individual-key cache structure...');
+        
+        // Get all old-format keys
+        const [oldPriceKeys, oldMarketCapKeys, oldSharesKeys] = await Promise.all([
+          cache.keys('adjusted-price:*').catch(() => []),
+          cache.keys('market-cap:*').catch(() => []),
+          cache.keys('shares-outstanding:*').catch(() => [])
+        ]);
+        
+        const allOldKeys = [...oldPriceKeys, ...oldMarketCapKeys, ...oldSharesKeys];
+        
+        if (allOldKeys.length === 0) {
+          return res.status(200).json({
+            success: true,
+            deletedCount: 0,
+            message: 'No old cache entries found'
+          });
+        }
+
+        const deletedCount = await cache.mdel(allOldKeys);
+        
+        console.log(`✅ Successfully cleared ${deletedCount} old cache entries`);
+        
+        return res.status(200).json({
+          success: true,
+          deletedCount,
+          message: `Cleared ${deletedCount} old cache entries (adjusted-price, market-cap, shares-outstanding)`,
+          breakdown: {
+            priceKeys: oldPriceKeys.length,
+            marketCapKeys: oldMarketCapKeys.length,
+            sharesKeys: oldSharesKeys.length
+          }
         });
 
       } else if (action === 'clear_by_ticker') {

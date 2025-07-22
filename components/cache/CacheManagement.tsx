@@ -34,6 +34,8 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [cacheStats, setCacheStats] = useState<any>(null)
+  const [fillCacheInput, setFillCacheInput] = useState('')
+  const [fillCacheLoading, setFillCacheLoading] = useState(false)
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -221,6 +223,84 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
     }
   }
 
+  const validateFillCache = async () => {
+    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    if (tickers.length === 0) {
+      alert('Please enter at least one ticker symbol')
+      return
+    }
+
+    setFillCacheLoading(true)
+    try {
+      const response = await fetch('/api/fill-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'validate',
+          tickers
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const summary = `Cache Status for ${tickers.length} tickers:\n\n✅ Already Cached: ${data.cached.length}\n❌ Missing: ${data.missing.length}\n\nCached: ${data.cached.join(', ') || 'None'}\nMissing: ${data.missing.join(', ') || 'None'}`
+        alert(summary)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Validation failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to validate cache: ${error.message}`)
+      console.error('Validate cache error:', error)
+    } finally {
+      setFillCacheLoading(false)
+    }
+  }
+
+  const fillCacheData = async () => {
+    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    if (tickers.length === 0) {
+      alert('Please enter at least one ticker symbol')
+      return
+    }
+
+    const estimatedTime = Math.ceil(tickers.length / 10)
+    if (!confirm(`Fill cache for ${tickers.length} tickers?\n\nThis will fetch historical data from EODHD API.\nEstimated time: ~${estimatedTime} minutes\n\nContinue?`)) {
+      return
+    }
+
+    setFillCacheLoading(true)
+    try {
+      const response = await fetch('/api/fill-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'fill',
+          tickers
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          alert(`Cache Fill Complete!\n\n✅ Success: ${data.results.success.length}\n❌ Errors: ${data.results.errors.length}\n⚠️ Warnings: ${data.results.warnings.length}\n\nSuccessfully cached: ${data.results.success.join(', ') || 'None'}\nErrors: ${data.results.errors.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'}`)
+          setFillCacheInput('')
+          fetchCachedAnalyses() // Refresh cache stats
+        } else {
+          alert(`Cache fill failed: ${data.message}`)
+        }
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Fill cache failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to fill cache: ${error.message}`)
+      console.error('Fill cache error:', error)
+    } finally {
+      setFillCacheLoading(false)
+    }
+  }
+
   const updateCacheName = async (key: string, customName: string) => {
     try {
       const response = await fetch('/api/cache-management', {
@@ -403,16 +483,16 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                   <span className="font-bold text-lg text-blue-600">{cacheStats.uniqueTickers.toLocaleString()}</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-gray-600">Price Data:</span>
-                  <span className="font-medium">{cacheStats.priceDataPoints.toLocaleString()} points</span>
+                  <span className="text-gray-600">Cache Structure:</span>
+                  <span className="font-medium capitalize">{cacheStats.cacheStructure || 'ticker-based'}</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-gray-600">Market Cap Data:</span>
-                  <span className="font-medium">{cacheStats.marketCapDataPoints.toLocaleString()} points</span>
+                  <span className="text-gray-600">Data Points:</span>
+                  <span className="font-medium">{cacheStats.totalYearDataPoints ? cacheStats.totalYearDataPoints.toLocaleString() : '0'} year records</span>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-gray-600">Shares Data:</span>
-                  <span className="font-medium">{cacheStats.sharesDataPoints.toLocaleString()} points</span>
+                  <span className="text-gray-600">Avg Years/Ticker:</span>
+                  <span className="font-medium">{cacheStats.averageYearsPerTicker || '0'} years</span>
                 </div>
               </div>
             </div>
@@ -497,6 +577,63 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
           <div className="border-b border-gray-200 bg-red-50">
             <div className="p-4">
               <div className="mt-4 space-y-4">
+                {/* Fill Cache Section */}
+                <div className="bg-white border border-green-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <span className="text-xl">💾</span>
+                    <h4 className="font-semibold text-green-900">Fill Cache with Historical Data</h4>
+                  </div>
+                  <p className="text-sm text-green-700 mb-4">
+                    Pre-populate cache with historical data from EODHD API. This ensures fast simulations without API calls during analysis.
+                  </p>
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Validate Cache Coverage</h5>
+                      <p className="text-xs text-gray-600">Check which tickers are already cached</p>
+                      <input
+                        type="text"
+                        placeholder="Enter tickers: AAPL,MSFT,GOOGL"
+                        value={fillCacheInput}
+                        onChange={(e) => setFillCacheInput(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                      />
+                      <button
+                        onClick={validateFillCache}
+                        disabled={fillCacheLoading || !fillCacheInput.trim()}
+                        className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                      >
+                        {fillCacheLoading ? '🔍 Validating...' : '🔍 Validate Cache'}
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <h5 className="font-medium text-gray-900">Fill Cache</h5>
+                      <p className="text-xs text-gray-600">Fetch and cache historical data for missing tickers</p>
+                      <div className="text-xs text-gray-500 mb-2">
+                        Same ticker list as validation →
+                      </div>
+                      <button
+                        onClick={fillCacheData}
+                        disabled={fillCacheLoading || !fillCacheInput.trim()}
+                        className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                      >
+                        {fillCacheLoading ? '⏳ Filling Cache...' : '💾 Fill Cache'}
+                      </button>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                    <div className="flex items-start space-x-2">
+                      <span className="text-blue-600 mt-0.5">ℹ️</span>
+                      <div className="text-sm text-blue-800">
+                        <strong>Pro Tip:</strong> Fill cache during off-peak hours. Large portfolios (100+ tickers) may take 10+ minutes. 
+                        Use validation first to see what's already cached.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="bg-white border border-red-200 rounded-lg p-4">
                   <div className="flex items-center space-x-2 mb-3">
                     <span className="text-xl">☢️</span>
