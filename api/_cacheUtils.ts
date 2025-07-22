@@ -707,7 +707,7 @@ export async function fillCache(tickers: string[]): Promise<{
   // Get current year for date range
   const currentYear = new Date().getFullYear();
   const maxYear = currentYear; // Up to current year
-  const minYear = 1990; // Start from 1990
+  const minYear = 2000; // Start from 2000
   
   for (const ticker of tickers) {
     try {
