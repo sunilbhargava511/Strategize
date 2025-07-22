@@ -350,7 +350,7 @@ export async function getSharesOutstanding(ticker: string, date: string, apiToke
     // Another fallback: Check SharesOutstandingDate in General
     else if (fundamentals.General && fundamentals.General.SharesOutstandingDate) {
       sharesOutstanding = fundamentals.General.SharesOutstandingDate;
-      console.log(`✅ Found shares outstanding in General.SharesOutstandingDate for ${ticker}: ${sharesOutstanding.toLocaleString()}`);
+      console.log(`✅ Found shares outstanding in General.SharesOutstandingDate for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
     }
     
     if (!sharesOutstanding || sharesOutstanding <= 0) {
