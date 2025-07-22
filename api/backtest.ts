@@ -98,6 +98,7 @@ async function calculateStrategy(
         });
       } else {
         // Fallback to equal weight if market cap data unavailable
+        console.log(`⚠️ Warning: No market cap data available for year ${year}. Using equal weight fallback.`);
         const equalWeight = 1 / availableTickers.length;
         availableTickers.forEach(ticker => {
           weights[ticker] = equalWeight;
@@ -112,7 +113,21 @@ async function calculateStrategy(
       // Allocate based on weights
       availableTickers.forEach(ticker => {
         const allocation = currentValue * weights[ticker];
-        currentHoldings[ticker] = allocation / tickerPrices[ticker];
+        const price = tickerPrices[ticker];
+        
+        // Safety check for valid price data
+        if (!price || price <= 0) {
+          console.log(`⚠️ Warning: Invalid price for ${ticker} in ${year}: ${price}. Skipping allocation.`);
+          return;
+        }
+        
+        const shares = allocation / price;
+        if (!isFinite(shares) || shares < 0) {
+          console.log(`⚠️ Warning: Invalid shares calculation for ${ticker} in ${year}: ${shares}. Allocation: ${allocation}, Price: ${price}`);
+          return;
+        }
+        
+        currentHoldings[ticker] = shares;
       });
     }
     
