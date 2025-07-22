@@ -35,9 +35,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Fetch specific cache entry
         console.log(`📦 Fetching specific cache entry: ${key}`);
         
-        if (!key.startsWith('backtest:')) {
+        if (!key.startsWith('backtest:') && !key.startsWith('ticker-data:')) {
           return res.status(400).json({
-            error: 'Invalid cache key - only backtest results can be fetched'
+            error: 'Invalid cache key - only backtest results and ticker data can be fetched'
           });
         }
 
