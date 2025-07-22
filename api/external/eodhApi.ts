@@ -174,13 +174,88 @@ export async function getValidUSTickers(bypassCache: boolean = false): Promise<V
 // Get shares outstanding from fundamentals API
 export async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
   try {
-    // Convert date string to Date object to find the target year
     const targetDate = new Date(date);
-    const targetYear = targetDate.getFullYear();
+    const cutoffDate = targetDate;
     
-    logger.debug(`Fetching shares outstanding for ${ticker} as of ${date} (year: ${targetYear})`);
+    logger.debug(`Fetching shares outstanding for ${ticker} as of ${date} using EODHD quarterly balance sheet method`);
     
-    // Use fundamentals API to get shares outstanding
+    // Step 1: Get all available quarterly balance sheet dates (following Python example)
+    const periodsUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json&filter=Financials::Balance_Sheet::quarterly`;
+    
+    const controller1 = new AbortController();
+    const timeoutId1 = setTimeout(() => controller1.abort(), TIMEOUTS.EODHD_API);
+    
+    const periodsResponse = await fetch(periodsUrl, { signal: controller1.signal });
+    clearTimeout(timeoutId1);
+    
+    if (!periodsResponse.ok) {
+      logger.debug(`Failed to get quarterly periods for ${ticker}: ${periodsResponse.status}`);
+      return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+    }
+    
+    const allQuarters = await periodsResponse.json();
+    
+    if (!allQuarters || typeof allQuarters !== 'object') {
+      logger.debug(`Invalid quarterly data structure for ${ticker}`);
+      return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+    }
+    
+    // Step 2: Find the most recent quarter before the cutoff date
+    let bestDate: string | null = null;
+    const availableDates = Object.keys(allQuarters).sort().reverse(); // Sort descending
+    
+    for (const dateStr of availableDates) {
+      try {
+        const reportDate = new Date(dateStr);
+        if (reportDate < cutoffDate) {
+          bestDate = dateStr;
+          break;
+        }
+      } catch (dateError) {
+        continue; // Skip invalid dates
+      }
+    }
+    
+    if (!bestDate) {
+      logger.debug(`No valid quarterly reports found before ${date} for ${ticker}`);
+      return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+    }
+    
+    // Step 3: Query for outstanding shares on that specific date
+    const sharesUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json&filter=Financials::Balance_Sheet::quarterly::${bestDate}::commonStockSharesOutstanding`;
+    
+    const controller2 = new AbortController();
+    const timeoutId2 = setTimeout(() => controller2.abort(), TIMEOUTS.EODHD_API);
+    
+    const sharesResponse = await fetch(sharesUrl, { signal: controller2.signal });
+    clearTimeout(timeoutId2);
+    
+    if (!sharesResponse.ok) {
+      logger.debug(`Failed to get shares outstanding for ${ticker} on ${bestDate}: ${sharesResponse.status}`);
+      return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+    }
+    
+    const sharesOutstanding = await sharesResponse.json();
+    
+    if (typeof sharesOutstanding === 'number' && sharesOutstanding > 0) {
+      logger.success(`Found historical shares outstanding for ${ticker} as of ${bestDate}: ${sharesOutstanding.toLocaleString()}`);
+      return sharesOutstanding;
+    }
+    
+    logger.debug(`Invalid shares outstanding value for ${ticker} on ${bestDate}: ${sharesOutstanding}`);
+    return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+    
+  } catch (error) {
+    logger.debug(`Error fetching historical shares outstanding for ${ticker}: ${error}`);
+    return await fallbackToCurrentFundamentals(ticker, targetDate, apiToken);
+  }
+}
+
+// Fallback function for when historical data is not available
+async function fallbackToCurrentFundamentals(ticker: string, targetDate: Date, apiToken: string): Promise<number | null> {
+  try {
+    logger.warn(`Using current fundamentals fallback for ${ticker} ${targetDate.getFullYear()} (may be inaccurate for historical analysis)`);
+    
     const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${ticker}?api_token=${apiToken}&fmt=json`;
     
     const controller = new AbortController();
@@ -190,47 +265,27 @@ export async function getSharesOutstanding(ticker: string, date: string, apiToke
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      logger.debug(`EODHD fundamentals API error for ${ticker}: ${response.status}`);
       return null;
     }
     
     const fundamentals = await response.json();
     
-    if (!fundamentals) {
-      logger.debug(`No fundamentals data for ${ticker}`);
-      return null;
+    if (fundamentals?.General?.SharesOutstanding) {
+      const shares = fundamentals.General.SharesOutstanding;
+      logger.warn(`Using CURRENT shares outstanding for ${ticker}: ${shares.toLocaleString()}`);
+      return shares;
     }
     
-    // Look for shares outstanding - EODHD provides this in multiple possible locations
-    let sharesOutstanding: number | null = null;
-    
-    // Check SharesOutstanding in General section (most common location)
-    if (fundamentals.General && fundamentals.General.SharesOutstanding) {
-      sharesOutstanding = fundamentals.General.SharesOutstanding;
-      logger.debug(`Found shares outstanding in General.SharesOutstanding for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
+    if (fundamentals?.SharesStats?.SharesOutstanding) {
+      const shares = fundamentals.SharesStats.SharesOutstanding;
+      logger.warn(`Using CURRENT shares outstanding for ${ticker}: ${shares.toLocaleString()}`);
+      return shares;
     }
     
-    // Fallback: Check in SharesStats section
-    else if (fundamentals.SharesStats && fundamentals.SharesStats.SharesOutstanding) {
-      sharesOutstanding = fundamentals.SharesStats.SharesOutstanding;
-      logger.debug(`Found shares outstanding in SharesStats.SharesOutstanding for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
-    }
-    
-    // Another fallback: Check SharesOutstandingDate in General
-    else if (fundamentals.General && fundamentals.General.SharesOutstandingDate) {
-      sharesOutstanding = fundamentals.General.SharesOutstandingDate;
-      logger.debug(`Found shares outstanding in General.SharesOutstandingDate for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
-    }
-    
-    if (!sharesOutstanding || sharesOutstanding <= 0) {
-      logger.debug(`No valid shares outstanding found for ${ticker} in fundamentals data`);
-      return null;
-    }
-    
-    return sharesOutstanding;
+    return null;
     
   } catch (error) {
-    logger.debug(`Error fetching shares outstanding for ${ticker}: ${error}`);
+    logger.debug(`Fallback fundamentals lookup failed for ${ticker}: ${error}`);
     return null;
   }
 }
