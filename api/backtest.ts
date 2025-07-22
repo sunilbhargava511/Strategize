@@ -151,7 +151,9 @@ async function calculateStrategy(
         }, 0);
         
         console.log(`💰 Portfolio value before rebalancing ${year}: ${formatCurrency(portfolioValueBeforeRebalancing)}`);
+        console.log(`📊 Previous currentValue: ${formatCurrency(currentValue)}`);
         currentValue = portfolioValueBeforeRebalancing;
+        console.log(`📊 Updated currentValue: ${formatCurrency(currentValue)}`);
       }
       
       currentHoldings = {};
@@ -244,6 +246,15 @@ async function calculateStrategy(
     };
   });
   
+  // Debug logging for rebalanced strategies
+  if (rebalance) {
+    console.log(`\n🔍 REBALANCED STRATEGY DEBUG:`);
+    console.log(`   Initial Investment: ${formatCurrency(initialInvestment)}`);
+    console.log(`   Final currentValue: ${formatCurrency(currentValue)}`);
+    console.log(`   Yearly Values:`, Object.entries(yearlyValues).map(([year, value]) => `${year}: ${formatCurrency(value)}`).join(', '));
+    console.log(`   Expected Return: ${(((currentValue - initialInvestment) / initialInvestment) * 100).toFixed(2)}%`);
+  }
+
   const totalReturn = ((currentValue - initialInvestment) / initialInvestment) * 100;
   const years = endYear - startYear;
   const annualizedReturn = years > 0 ? (Math.pow(currentValue / initialInvestment, 1 / years) - 1) * 100 : 0;
