@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import Head from 'next/head'
 import Header from '../components/ui/Header'
 import ResultsDisplay from '../components/backtesting/ResultsDisplay'
@@ -37,6 +37,11 @@ export default function Home() {
     successful: number;
     failed: number;
   } | null>(null)
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [cacheStats, setCacheStats] = useState<any>(null)
+  const [viewTickerInput, setViewTickerInput] = useState('')
+  const [viewTickerData, setViewTickerData] = useState<any>(null)
+  const [viewTickerLoading, setViewTickerLoading] = useState(false)
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
     console.log('Loading cached analysis:', cachedAnalysis)
@@ -165,11 +170,8 @@ export default function Home() {
 
   // Cache filling functions
   const validateFillCache = async () => {
-    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
-    if (tickers.length === 0) {
-      alert('Please enter ticker symbols')
-      return
-    }
+    const tickers = await getTickersFromInput()
+    if (tickers.length === 0) return
 
     setFillCacheLoading(true)
     try {
@@ -204,11 +206,8 @@ export default function Home() {
   }
 
   const fillCacheData = async () => {
-    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
-    if (tickers.length === 0) {
-      alert('Please enter ticker symbols')
-      return
-    }
+    const tickers = await getTickersFromInput()
+    if (tickers.length === 0) return
 
     const estimatedTime = Math.ceil(tickers.length / 10)
     if (!confirm(`Fill cache for ${tickers.length} tickers?\n\nThis will fetch historical data from EODHD API.\nEstimated time: ~${estimatedTime} minutes\n\nContinue?`)) {
@@ -318,6 +317,92 @@ export default function Home() {
       console.error('Remove failed ticker error:', error)
     }
   }
+
+  const fetchCacheStats = async () => {
+    try {
+      const response = await fetch('/api/cache-management')
+      if (response.ok) {
+        const data = await response.json()
+        setCacheStats(data.cacheStatistics || null)
+      }
+    } catch (error) {
+      console.error('Failed to fetch cache stats:', error)
+    }
+  }
+
+  const getTickersFromInput = async (): Promise<string[]> => {
+    let tickers: string[] = []
+    
+    if (csvFile) {
+      // Parse CSV file
+      try {
+        const csvContent = await csvFile.text()
+        const lines = csvContent.split('\n')
+        const tickerSet = new Set<string>()
+        
+        for (const line of lines) {
+          if (line.trim()) {
+            const columns = line.split(',')
+            if (columns.length > 0) {
+              const ticker = columns[0].trim().replace(/['"]/g, '').toUpperCase()
+              if (ticker && ticker.length > 0 && ticker !== 'TICKER' && ticker !== 'SYMBOL') {
+                tickerSet.add(ticker)
+              }
+            }
+          }
+        }
+        tickers = Array.from(tickerSet)
+      } catch (error) {
+        alert('Failed to read CSV file')
+        return []
+      }
+    } else if (fillCacheInput.trim()) {
+      // Parse manual input
+      tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    }
+    
+    if (tickers.length === 0) {
+      alert('Please enter ticker symbols manually or upload a CSV file')
+      return []
+    }
+    
+    return tickers
+  }
+
+  const viewTickerCache = async () => {
+    const ticker = viewTickerInput.trim().toUpperCase()
+    if (!ticker) {
+      alert('Please enter a ticker symbol')
+      return
+    }
+
+    setViewTickerLoading(true)
+    try {
+      const response = await fetch(`/api/cache-management?key=${encodeURIComponent(`ticker-data:${ticker}`)}`);
+      
+      if (response.ok) {
+        const result = await response.json()
+        // Set the actual ticker data directly (the year-based object)
+        setViewTickerData(result.data || {})
+      } else if (response.status === 404) {
+        // Set empty object for no data found
+        setViewTickerData({})
+      } else {
+        throw new Error('Failed to fetch ticker data')
+      }
+    } catch (error: any) {
+      alert(`Failed to view ticker data: ${error.message}`)
+      console.error('View ticker error:', error)
+      setViewTickerData({})
+    } finally {
+      setViewTickerLoading(false)
+    }
+  }
+
+  // Fetch cache stats on component mount
+  useEffect(() => {
+    fetchCacheStats()
+  }, [])
 
   const handleRunAnalysis = async () => {
     if (detectedTickers.length === 0) {
@@ -682,35 +767,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Simulation History Card */}
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                  </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Simulation History</h2>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-sm text-gray-600">
-                    View and manage your analysis history
-                  </p>
-                  
-                  <button
-                    onClick={() => setShowCacheManagement(true)}
-                    className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors font-medium"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                    <span>View Simulation History</span>
-                  </button>
-                </div>
-              </div>
-
               {/* Ready to Analyze Card */}
               <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-sm p-8 text-center">
                 <h3 className="text-2xl font-bold text-gray-900 mb-6">Ready to Analyze?</h3>
@@ -739,6 +795,33 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* Simulation History Card */}
+              <div className="bg-white rounded-2xl shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
+                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-gray-900">Simulation History</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowCacheManagement(true)}
+                    className="flex items-center space-x-1 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition-colors text-sm font-medium"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                    <span>View</span>
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600">
+                  View and manage your analysis history
+                </p>
+              </div>
+
               {/* Cache Management Card */}
               <div className="bg-white rounded-2xl shadow-sm p-6">
                 <div className="flex items-center space-x-3 mb-6">
@@ -750,67 +833,217 @@ export default function Home() {
                   <h2 className="text-xl font-semibold text-gray-900">Cache Management</h2>
                 </div>
 
-                <div className="space-y-4">
-                  <div>
-                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7" />
-                      </svg>
-                      <span>Fill Cache with Historical Data</span>
-                    </label>
-                    <p className="text-xs text-gray-500 mb-3">
-                      Pre-populate cache with EODHD API data for faster analysis
-                    </p>
-                    
-                    <div className="space-y-3">
-                      <input
-                        type="text"
-                        value={fillCacheInput}
-                        onChange={(e) => setFillCacheInput(e.target.value)}
-                        placeholder="Enter tickers: AAPL, MSFT, GOOGL"
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                      />
-                      
-                      <div className="grid grid-cols-2 gap-3">
+                {/* Cache Statistics Section */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <h3 className="text-sm font-semibold text-gray-700">Cache Statistics</h3>
+                  </div>
+                  {cacheStats ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div>
+                          <span className="text-gray-600">Unique Tickers:</span>
+                          <span className="ml-2 font-semibold text-blue-600">{cacheStats.uniqueTickers || 0}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Cache Structure:</span>
+                          <span className="ml-2 font-semibold text-gray-900">{cacheStats.cacheStructure || 'Unknown'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Data Points:</span>
+                          <span className="ml-2 font-semibold text-green-600">{cacheStats.totalYearDataPoints || 0} year records</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Avg Years/Ticker:</span>
+                          <span className="ml-2 font-semibold text-purple-600">{cacheStats.averageYearsPerTicker || 0} years</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Failed Tickers:</span>
+                          <span className={`ml-2 font-semibold ${(cacheStats.failedTickersCount || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>{cacheStats.failedTickersCount || 0}</span>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex justify-between items-center">
                         <button
-                          onClick={validateFillCache}
-                          disabled={fillCacheLoading || !fillCacheInput.trim()}
-                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 disabled:bg-gray-100 text-blue-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                          onClick={() => {
+                            if (cacheStats.uniqueTickers && cacheStats.uniqueTickers > 0) {
+                              const tickersText = cacheStats.tickersList?.join(', ') || 'No tickers available'
+                              alert(`All ${cacheStats.uniqueTickers} cached tickers:\n\n${tickersText}`)
+                            } else {
+                              alert('No cached tickers found')
+                            }
+                          }}
+                          className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                         >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          <span>Validate</span>
+                          ▶ View all {cacheStats.uniqueTickers || 0} cached tickers
                         </button>
                         <button
-                          onClick={fillCacheData}
-                          disabled={fillCacheLoading || !fillCacheInput.trim()}
-                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-50 hover:bg-green-100 disabled:bg-gray-100 text-green-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                          onClick={fetchCacheStats}
+                          className="flex items-center space-x-1 px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-xs"
                         >
-                          {fillCacheLoading ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
-                              <span>Filling...</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                              </svg>
-                              <span>Fill Cache</span>
-                            </>
-                          )}
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          <span>Refresh</span>
                         </button>
                       </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-gray-600">Loading cache statistics...</p>
+                      <button
+                        onClick={fetchCacheStats}
+                        className="mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        Retry loading stats
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-6">
+                  {/* Fill Cache with Historical Data */}
+                  <div>
+                    <div className="flex items-center space-x-2 mb-4">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-gray-900">Fill Cache with Historical Data</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Pre-populate cache with historical data from EODHD API. This ensures fast simulations without API calls during analysis.
+                    </p>
+                    
+                    {/* Manual Entry and CSV Upload */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Manual Entry</label>
+                        <input
+                          type="text"
+                          value={fillCacheInput}
+                          onChange={(e) => setFillCacheInput(e.target.value)}
+                          placeholder="Enter tickers: AAPL,MSFT,GOOGL"
+                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">CSV Upload</label>
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="file"
+                            accept=".csv"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0]
+                              if (file) {
+                                setCsvFile(file)
+                                const reader = new FileReader()
+                                reader.onload = (event) => {
+                                  try {
+                                    const text = event.target?.result as string
+                                    let tickers: string[] = []
+                                    
+                                    // Split by various delimiters and clean up
+                                    const rawTickers = text.split(/[,\n\r\t\s]+/)
+                                      .map(t => t.trim().replace(/['"]/g, '').toUpperCase())
+                                      .filter(t => t && t !== 'TICKER' && t !== 'SYMBOL' && t !== 'STOCK')
+                                    
+                                    // Remove duplicates
+                                    tickers = Array.from(new Set(rawTickers))
+                                    
+                                    setFillCacheInput(tickers.join(', '))
+                                    
+                                    // Show feedback
+                                    if (tickers.length > 0) {
+                                      console.log(`📁 CSV Upload: Found ${tickers.length} unique tickers`, tickers.slice(0, 10))
+                                    } else {
+                                      alert('No valid ticker symbols found in the CSV file. Please check the format.')
+                                    }
+                                  } catch (error) {
+                                    alert('Error reading CSV file. Please check the file format.')
+                                    console.error('CSV parsing error:', error)
+                                  }
+                                }
+                                reader.onerror = () => {
+                                  alert('Error reading file. Please try again.')
+                                }
+                                reader.readAsText(file)
+                              }
+                            }}
+                            className="hidden"
+                            id="csvUpload"
+                          />
+                          <label 
+                            htmlFor="csvUpload"
+                            className="flex-1 cursor-pointer bg-blue-50 hover:bg-blue-100 border-2 border-dashed border-blue-200 rounded-lg p-2 text-center text-sm text-blue-600"
+                          >
+                            {csvFile ? csvFile.name : 'Choose File'}
+                          </label>
+                          {csvFile && (
+                            <button
+                              onClick={() => {
+                                setCsvFile(null)
+                                const fileInput = document.getElementById('csvUpload') as HTMLInputElement
+                                if (fileInput) fileInput.value = ''
+                              }}
+                              className="text-red-500 hover:text-red-700"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Validate Cache Coverage and Fill Cache */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Validate Cache Coverage</label>
+                      <p className="text-xs text-gray-500 mb-3">Check which tickers are already cached</p>
+                      <button
+                        onClick={validateFillCache}
+                        disabled={fillCacheLoading || !fillCacheInput.trim()}
+                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 disabled:text-gray-400 rounded-lg transition-colors text-sm mb-4"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Validate Cache</span>
+                      </button>
                       
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Fill Cache</label>
+                      <p className="text-xs text-gray-500 mb-3">Fetch and cache historical data for missing tickers</p>
+                      <button
+                        onClick={fillCacheData}
+                        disabled={fillCacheLoading || !fillCacheInput.trim()}
+                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-green-50 hover:bg-green-100 disabled:bg-gray-100 text-green-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        {fillCacheLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                            <span>Filling...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            <span>Fill Cache</span>
+                          </>
+                        )}
+                      </button>
+
                       {/* Progress Display */}
                       {fillCacheProgress && (
-                        <div className="mt-3 space-y-2">
-                          <div className="flex justify-between text-xs text-gray-600">
+                        <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                          <div className="flex justify-between text-xs text-gray-600 mb-2">
                             <span>Processing tickers...</span>
                             <span>{fillCacheProgress.processed}/{fillCacheProgress.total} ({fillCacheProgress.percentage.toFixed(1)}%)</span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
                             <div className="bg-green-500 h-2 rounded-full transition-all duration-300"
                                  style={{ width: `${fillCacheProgress.percentage}%` }} />
                           </div>
@@ -819,17 +1052,131 @@ export default function Home() {
                             <span className="text-red-600">❌ Failed: {fillCacheProgress.failed}</span>
                           </div>
                           {fillCacheProgress.currentTicker && (
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-gray-500 mt-1">
                               Currently processing: <span className="font-medium">{fillCacheProgress.currentTicker}</span>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Pro Tip */}
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="flex items-start space-x-2">
+                          <svg className="w-4 h-4 text-blue-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div>
+                            <p className="text-xs font-medium text-blue-700">Pro Tip:</p>
+                            <p className="text-xs text-blue-600">Fill cache during off-peak hours. Large portfolios (100+ tickers) may take 10+ minutes. Use validation first to see what&apos;s already cached.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* View Ticker Cache Data Section */}
+                  <div className="pt-6 border-t border-gray-200">
+                    <div className="flex items-center space-x-2 mb-4">
+                      <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-gray-900">View Ticker Cache Data</h3>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Inspect the cached data for a specific ticker to verify what&apos;s stored.
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Ticker Symbol</label>
+                        <input
+                          type="text"
+                          value={viewTickerInput}
+                          onChange={(e) => setViewTickerInput(e.target.value.toUpperCase())}
+                          placeholder="e.g., AAPL"
+                          className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && viewTickerInput.trim()) {
+                              viewTickerCache()
+                            }
+                          }}
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={viewTickerCache}
+                        disabled={viewTickerLoading || !viewTickerInput.trim()}
+                        className="w-full flex items-center justify-center space-x-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 disabled:bg-gray-100 text-purple-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        {viewTickerLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                            <span>Loading...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                            <span>View Data</span>
+                          </>
+                        )}
+                      </button>
+                      
+                      {/* Display Cache Data */}
+                      {viewTickerData && (
+                        <div className="mt-4 p-3 bg-gray-50 rounded-lg max-h-60 overflow-y-auto">
+                          <div className="flex justify-between items-center mb-2">
+                            <h4 className="text-sm font-semibold text-gray-700">
+                              Cache Data for {viewTickerInput}
+                            </h4>
+                            <button
+                              onClick={() => setViewTickerData(null)}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="space-y-2 text-xs">
+                            {Object.keys(viewTickerData).length > 0 ? (
+                              <>
+                                <div className="text-gray-600 mb-2">
+                                  <strong>Years available:</strong> {Object.keys(viewTickerData).length} ({Object.keys(viewTickerData).sort().join(', ')})
+                                </div>
+                                {Object.entries(viewTickerData).slice(0, 5).map(([year, data]: [string, any]) => (
+                                  <div key={year} className="bg-white p-2 rounded border">
+                                    <div className="font-medium text-gray-700 mb-1">{year}</div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                      <div>Price: <span className="font-medium">${data.price?.toFixed(2) || 'N/A'}</span></div>
+                                      <div>Market Cap: <span className="font-medium">${data.market_cap ? (data.market_cap / 1e9).toFixed(2) + 'B' : 'N/A'}</span></div>
+                                      {data.shares_outstanding && (
+                                        <div className="col-span-2">Shares: <span className="font-medium">{data.shares_outstanding.toLocaleString()}</span></div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                {Object.keys(viewTickerData).length > 5 && (
+                                  <div className="text-center text-gray-500 text-xs mt-2">
+                                    ... and {Object.keys(viewTickerData).length - 5} more years
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              <div className="text-gray-500 text-center py-2">
+                                No cache data found for {viewTickerInput}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
                   </div>
                   
                   {/* Remove Failed Tickers Section */}
-                  <div className="mt-6 pt-4 border-t border-gray-200">
+                  <div className="pt-6 border-t border-gray-200">
                     <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
