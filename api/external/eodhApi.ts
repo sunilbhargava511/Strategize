@@ -173,9 +173,10 @@ export async function getValidUSTickers(bypassCache: boolean = false): Promise<V
 
 // Get shares outstanding from fundamentals API
 export async function getSharesOutstanding(ticker: string, date: string, apiToken: string): Promise<number | null> {
+  const targetDate = new Date(date);
+  const cutoffDate = targetDate;
+  
   try {
-    const targetDate = new Date(date);
-    const cutoffDate = targetDate;
     
     logger.debug(`Fetching shares outstanding for ${ticker} as of ${date} using EODHD quarterly balance sheet method`);
     
