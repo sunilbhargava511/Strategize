@@ -52,12 +52,19 @@ async function calculateStrategy(
   let currentHoldings: Record<string, number> = {}; // shares per ticker
   
   // Get data from cache (which is already loaded in the main handler)
-  const cacheData = await getDataFromCache([...tickers, 'SPY']);
+  // Ensure SPY is included but avoid duplicates
+  const uniqueTickers = [...new Set([...tickers, 'SPY'])];
+  const cacheData = await getDataFromCache(uniqueTickers);
   
   // Use pre-calculated availability data if provided, otherwise calculate it
-  const stockAvailabilityData = availabilityData || analyzeStockAvailabilityChanges(cacheData.data, tickers, startYear, endYear);
-  if (!availabilityData) {
-    console.log(`📊 Stock availability analysis: Found ${stockAvailabilityData.reduce((sum, year) => sum + year.enteringStocks.length + year.exitingStocks.length, 0)} entry/exit events`);
+  // For SPY benchmark or other single-ticker strategies, we need to analyze the specific tickers
+  const needsNewAnalysis = !availabilityData || (tickers.length === 1 && tickers[0] === 'SPY');
+  const stockAvailabilityData = needsNewAnalysis 
+    ? analyzeStockAvailabilityChanges(cacheData.data, tickers, startYear, endYear)
+    : availabilityData;
+    
+  if (needsNewAnalysis) {
+    console.log(`📊 Stock availability analysis for ${tickers.join(', ')}: Found ${stockAvailabilityData.reduce((sum, year) => sum + year.enteringStocks.length + year.exitingStocks.length, 0)} entry/exit events`);
   }
   
   for (let yearIndex = 0; yearIndex < stockAvailabilityData.length; yearIndex++) {
