@@ -14,7 +14,7 @@ interface ConfigurationPanelProps {
 export default function ConfigurationPanel({ configuration, onConfigurationChange }: ConfigurationPanelProps) {
   const currentYear = new Date().getFullYear()
   const minYear = 1990
-  const maxYear = currentYear
+  const maxYear = currentYear // Can analyze through Jan 1 of current year
 
   const handleChange = (field: keyof Configuration, value: any) => {
     onConfigurationChange({

@@ -152,6 +152,20 @@ export default function Home() {
       return
     }
 
+    // Check for very large portfolios and warn user
+    if (detectedTickers.length > 75) {
+      const proceed = confirm(
+        `⚠️ Large Portfolio Warning\n\n` +
+        `You're analyzing ${detectedTickers.length} tickers, which may take a very long time or timeout.\n\n` +
+        `Recommendations:\n` +
+        `• For best results, keep portfolios under 50 tickers\n` +
+        `• Consider splitting into smaller batches\n` +
+        `• Analysis may timeout after 10 minutes on Vercel\n\n` +
+        `Do you want to proceed anyway?`
+      )
+      if (!proceed) return
+    }
+
     // Scroll to top to show progress
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
@@ -206,7 +220,15 @@ export default function Home() {
         }
       }, updateInterval);
 
-      const response = await fetch('/api/backtest', {
+      // Route very large portfolios to batch processing endpoint
+      const isExtremelyLarge = detectedTickers.length >= 100
+      const apiEndpoint = isExtremelyLarge ? '/api/batch-backtest' : '/api/backtest'
+      
+      if (isExtremelyLarge) {
+        console.log(`🚀 Using batch processing for ${detectedTickers.length} tickers`)
+      }
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -225,6 +247,28 @@ export default function Home() {
       }
 
       const data = await response.json()
+      
+      // Handle batch processing response (202 status)
+      if (response.status === 202 && data.status === 'batch_required') {
+        setCurrentProgress({
+          phase: 'Batch Processing Required',
+          detail: `Portfolio too large (${data.totalTickers} tickers). Requires ${data.batchCount} batches, estimated ${data.estimatedTime}. Please reduce to under 75 tickers for optimal performance.`,
+          progress: 0
+        })
+        
+        setTimeout(() => {
+          alert(
+            `🚧 Large Portfolio Notice\n\n` +
+            `Your ${data.totalTickers}-ticker portfolio requires batch processing:\n\n` +
+            `• Would need ${data.batchCount} separate batches\n` +
+            `• Estimated time: ${data.estimatedTime}\n` +
+            `• Recommendation: Reduce to under 75 tickers\n\n` +
+            `Please consider splitting your portfolio into smaller analyses for better performance.`
+          )
+        }, 1000)
+        
+        return
+      }
       
       // Show completion summary with cache and timing stats
       const cacheStats = data.cacheStats || { hits: 0, misses: 0, total: 0 }

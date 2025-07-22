@@ -33,6 +33,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [tickerInput, setTickerInput] = useState('')
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
+  const [cacheStats, setCacheStats] = useState<any>(null)
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -42,6 +43,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
         const data = await response.json()
         setAnalyses(data.analyses || [])
         setTotalSize(data.totalSizeBytes || 0)
+        setCacheStats(data.cacheStatistics || null)
       }
     } catch (error) {
       console.error('Failed to fetch cached analyses:', error)
@@ -374,6 +376,50 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
             </svg>
           </button>
         </div>
+
+        {/* Cache Statistics */}
+        {cacheStats && (
+          <div className="px-6 py-4 bg-blue-50 border-b border-blue-100">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-2xl">📊</span>
+                <h3 className="text-lg font-semibold text-gray-900">Cache Statistics</h3>
+              </div>
+              <div className="flex flex-wrap gap-6 text-sm">
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-600">Unique Tickers:</span>
+                  <span className="font-bold text-lg text-blue-600">{cacheStats.uniqueTickers.toLocaleString()}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-600">Price Data:</span>
+                  <span className="font-medium">{cacheStats.priceDataPoints.toLocaleString()} points</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-600">Market Cap Data:</span>
+                  <span className="font-medium">{cacheStats.marketCapDataPoints.toLocaleString()} points</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-600">Shares Data:</span>
+                  <span className="font-medium">{cacheStats.sharesDataPoints.toLocaleString()} points</span>
+                </div>
+              </div>
+            </div>
+            {cacheStats.uniqueTickers > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm text-blue-700 hover:text-blue-900 font-medium">
+                  View all {cacheStats.uniqueTickers} cached tickers
+                </summary>
+                <div className="mt-2 p-3 bg-white rounded-lg border border-blue-200 max-h-32 overflow-y-auto">
+                  <div className="text-xs text-gray-700 font-mono grid grid-cols-8 gap-2">
+                    {cacheStats.tickersList.map((ticker: string) => (
+                      <span key={ticker} className="hover:text-blue-600 cursor-default">{ticker}</span>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            )}
+          </div>
+        )}
 
         {/* Controls */}
         <div className="p-6 border-b border-gray-100 bg-gray-50">

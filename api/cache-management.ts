@@ -57,17 +57,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       
       // List all cached analysis results
-      console.log('📦 Fetching all cached analysis results...');
+      console.log('📦 Fetching all cached analysis results and ticker statistics...');
       
       // Get all keys that match the backtest pattern
       const backtestKeys = await cache.keys('backtest:*');
       console.log(`Found ${backtestKeys.length} cached analysis results`);
       
+      // Get ticker statistics from market data cache
+      const [priceKeys, marketCapKeys, sharesKeys] = await Promise.all([
+        cache.keys('price:*'),
+        cache.keys('market-cap:*'),
+        cache.keys('shares:*')
+      ]);
+      
+      // Extract unique tickers from cache keys
+      const uniqueTickers = new Set<string>();
+      
+      // Parse price keys (format: price:TICKER:YEAR)
+      priceKeys.forEach(key => {
+        const parts = key.split(':');
+        if (parts.length >= 3) {
+          uniqueTickers.add(parts[1]);
+        }
+      });
+      
+      // Parse market cap keys (format: market-cap:TICKER:YEAR)
+      marketCapKeys.forEach(key => {
+        const parts = key.split(':');
+        if (parts.length >= 3) {
+          uniqueTickers.add(parts[1]);
+        }
+      });
+      
+      // Parse shares keys (format: shares:TICKER:YEAR)
+      sharesKeys.forEach(key => {
+        const parts = key.split(':');
+        if (parts.length >= 3) {
+          uniqueTickers.add(parts[1]);
+        }
+      });
+      
+      console.log(`Found ${uniqueTickers.size} unique tickers in cache`);
+      
       if (backtestKeys.length === 0) {
         return res.status(200).json({
           analyses: [],
           total: 0,
-          message: 'No cached analyses found'
+          message: 'No cached analyses found',
+          cacheStatistics: {
+            uniqueTickers: uniqueTickers.size,
+            tickersList: Array.from(uniqueTickers).sort(),
+            priceDataPoints: priceKeys.length,
+            marketCapDataPoints: marketCapKeys.length,
+            sharesDataPoints: sharesKeys.length,
+            totalDataPoints: priceKeys.length + marketCapKeys.length + sharesKeys.length
+          }
         });
       }
 
@@ -130,7 +174,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({
         analyses,
         total: analyses.length,
-        totalSizeBytes: analyses.reduce((sum, a) => sum + (a.size || 0), 0)
+        totalSizeBytes: analyses.reduce((sum, a) => sum + (a.size || 0), 0),
+        cacheStatistics: {
+          uniqueTickers: uniqueTickers.size,
+          tickersList: Array.from(uniqueTickers).sort(),
+          priceDataPoints: priceKeys.length,
+          marketCapDataPoints: marketCapKeys.length,
+          sharesDataPoints: sharesKeys.length,
+          totalDataPoints: priceKeys.length + marketCapKeys.length + sharesKeys.length
+        }
       });
 
     } else if (req.method === 'DELETE') {
@@ -352,15 +404,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           nameUpdatedAt: new Date().toISOString()
         };
 
-        // Determine cache duration (preserve original expiration)
-        const keyParts = key.split(':');
-        const endYear = parseInt(keyParts[3]);
-        const currentYear = new Date().getFullYear();
-        const isPermanent = endYear < currentYear;
-        const cacheTime = isPermanent ? undefined : 86400;
-
+        // All cache entries are now permanent since analysis is limited to historical data
         // Save the updated entry
-        await cache.set(key, updatedData, cacheTime);
+        await cache.set(key, updatedData); // No expiration - permanent cache
         
         console.log(`✅ Successfully updated name for ${key}: "${customName || 'Unnamed'}"`);
         

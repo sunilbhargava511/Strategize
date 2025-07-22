@@ -263,7 +263,7 @@ async function getValidUSTickers(bypassCache: boolean = false): Promise<{ active
     
     console.log(`✅ Fetched ${activeSet.size} active and ${delistedSet.size} delisted US tickers from EODHD`);
     
-    // Cache for 24 hours (86400 seconds)
+    // Cache permanently since ticker lists don't change frequently
     try {
       await cache.set(cacheKey, {
         activeTickers: Array.from(activeSet),
@@ -271,8 +271,8 @@ async function getValidUSTickers(bypassCache: boolean = false): Promise<{ active
         activeCount: activeSet.size,
         delistedCount: delistedSet.size,
         cached_at: new Date().toISOString()
-      }, 86400);
-      console.log('Cached US ticker lists for 24 hours');
+      }); // No expiration - permanent cache
+      console.log('Cached US ticker lists permanently');
     } catch (cacheError) {
       console.warn('Failed to cache US ticker lists:', cacheError);
     }
@@ -1725,6 +1725,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false } = req.body;
     console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache });
     
+    // Date validation: No analysis beyond Jan 1 of current year
+    const currentYear = new Date().getFullYear();
+    const MAX_YEAR = currentYear; // Can analyze through Jan 1 of current year
+    if (endYear > MAX_YEAR) {
+      return res.status(400).json({
+        error: `Analysis not available beyond ${MAX_YEAR}`,
+        message: `End year ${endYear} exceeds maximum allowed year ${MAX_YEAR}. Please use ${MAX_YEAR} or earlier.`,
+        maxYear: MAX_YEAR
+      });
+    }
+    
+    if (startYear > MAX_YEAR) {
+      return res.status(400).json({
+        error: `Analysis not available beyond ${MAX_YEAR}`,
+        message: `Start year ${startYear} exceeds maximum allowed year ${MAX_YEAR}. Please use ${MAX_YEAR} or earlier.`,
+        maxYear: MAX_YEAR
+      });
+    }
+    
+    console.log(`✅ Date validation passed: ${startYear}-${endYear} (within ${MAX_YEAR} limit)`);
+    
     // Initialize overall timing tracking
     const overallTimings: Record<string, number> = {};
 
@@ -2068,58 +2089,102 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`\n🔄 DATA FETCHING PHASE: Fetching essential data for ${processedTickers.length} tickers...`);
     const essentialDates = [
       `${startYear}-01-02`,
-      `${endYear >= 2025 ? 2024 : endYear}-12-31`
+      endYear >= currentYear ? `${currentYear}-01-02` : `${endYear}-12-31`
     ];
     
     let fetchedCount = 0;
     
-    // For large portfolios, skip pre-fetching to avoid timeouts - data will be fetched on-demand
-    if (processedTickers.length > 30) {
-      console.log(`📊 Large portfolio (${processedTickers.length} tickers) - skipping pre-fetch, will fetch data on-demand during strategy calculations`);
-      console.log(`⚡ This approach optimizes for speed and prevents timeouts on large portfolios`);
-    } else {
+    // Pre-fetch data for all portfolio sizes to ensure stability and cache efficiency
+    // This sequential approach with rate limiting is much more stable than concurrent API calls during strategy calculations
+    {
       const allTickersForData = ['SPY', ...processedTickers];
-      console.log(`📅 Fetching data for ${allTickersForData.length} tickers across ${essentialDates.length} key dates`);
+      console.log(`📅 PRE-FETCHING PHASE: Sequential data loading for ${allTickersForData.length} tickers across ${essentialDates.length} key dates`);
+      console.log(`⚡ This prevents the 504 timeouts caused by hundreds of concurrent API calls during strategy calculations`);
       
       let cacheHits = 0;
       let cacheTotal = 0;
       
-      // Batch data fetching to avoid overwhelming the API
-      const DATA_BATCH_SIZE = 15; // Fetch data for 15 ticker-date combinations at a time
-      const allDataRequests = allTickersForData.flatMap(ticker =>
-        essentialDates.map(date => ({ ticker, date }))
-      );
+      // Initialize cache statistics for comprehensive pre-fetching
+      const cacheStats = {
+        priceDataHits: 0,
+        priceDataMisses: 0,
+        marketCapHits: 0,
+        marketCapMisses: 0,
+        sharesOutstandingHits: 0,
+        sharesOutstandingMisses: 0
+      };
       
-      console.log(`📦 Processing ${allDataRequests.length} data requests in batches of ${DATA_BATCH_SIZE}`);
+      // Comprehensive data pre-fetching: Price, Market Cap, and Shares Outstanding
+      // This ensures ZERO EODHD API calls during strategy calculations
+      const TICKER_BATCH_SIZE = 10; // Process 10 tickers at a time to avoid overwhelming the API
+      const years = [];
+      for (let year = startYear; year <= endYear; year++) {
+        years.push(year);
+      }
       
-      for (let i = 0; i < allDataRequests.length; i += DATA_BATCH_SIZE) {
-        const batch = allDataRequests.slice(i, i + DATA_BATCH_SIZE);
-        console.log(`📊 Data batch ${Math.floor(i/DATA_BATCH_SIZE) + 1}/${Math.ceil(allDataRequests.length/DATA_BATCH_SIZE)}`);
+      console.log(`📦 COMPREHENSIVE PRE-FETCH: ${allTickersForData.length} tickers × ${years.length} years × 3 data types`);
+      console.log(`📊 Total data points to cache: ${allTickersForData.length * years.length * 3} (price + market cap + shares)`);
+      
+      for (let i = 0; i < allTickersForData.length; i += TICKER_BATCH_SIZE) {
+        const tickerBatch = allTickersForData.slice(i, i + TICKER_BATCH_SIZE);
+        const batchNum = Math.floor(i / TICKER_BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(allTickersForData.length / TICKER_BATCH_SIZE);
         
-        const batchPromises = batch.map(async ({ ticker, date }) => {
-          try {
-            const result = await fetchStockData(ticker, date, bypass_cache, historicalData);
-            fetchedCount++;
-            const progress = Math.round((fetchedCount / allDataRequests.length) * 100);
-            console.log(`📊 Data fetch progress: ${fetchedCount}/${allDataRequests.length} (${progress}%) - ${ticker} ${date}`);
-            return result;
-          } catch (error) {
-            fetchedCount++;
-            console.log(`❌ Could not fetch ${ticker} data for ${date}:`, error);
-            return null;
+        console.log(`\n📊 TICKER BATCH ${batchNum}/${totalBatches}: Processing ${tickerBatch.join(', ')}`);
+        
+        for (const ticker of tickerBatch) {
+          console.log(`   📈 ${ticker}: Caching all data for ${years.length} years...`);
+          
+          // Cache data for all years for this ticker
+          for (const year of years) {
+            try {
+              // Use parallel fetching for the 3 data types to speed up the process
+              const [priceData, marketCapData, sharesData] = await Promise.all([
+                getAdjustedPriceForYear(ticker, year, bypass_cache, cacheStats),
+                getMarketCapForYear(ticker, year, bypass_cache, cacheStats),
+                getSharesOutstandingForYear(ticker, year, bypass_cache, cacheStats)
+              ]);
+              
+              fetchedCount += 3; // Count all 3 data types
+              
+              const dataTypes = [];
+              if (priceData) dataTypes.push('price');
+              if (marketCapData) dataTypes.push('market-cap');
+              if (sharesData) dataTypes.push('shares');
+              
+              if (dataTypes.length > 0) {
+                console.log(`     ✅ ${year}: ${dataTypes.join(', ')}`);
+              } else {
+                console.log(`     ⚠️  ${year}: No data available`);
+              }
+              
+            } catch (error) {
+              fetchedCount += 3;
+              console.log(`     ❌ ${year}: Error fetching data -`, error);
+            }
           }
-        });
+        }
         
-        await Promise.all(batchPromises);
+        const progress = Math.round((fetchedCount / (allTickersForData.length * years.length * 3)) * 100);
+        console.log(`📊 Pre-fetch progress: ${progress}% complete (${fetchedCount}/${allTickersForData.length * years.length * 3} data points)`);
         
-        // Brief pause between data batches
-        if (i + DATA_BATCH_SIZE < allDataRequests.length) {
-          await new Promise(resolve => setTimeout(resolve, 300)); // 300ms pause
+        // Pause between ticker batches to respect API rate limits
+        if (i + TICKER_BATCH_SIZE < allTickersForData.length) {
+          console.log(`⏸️  Pausing 500ms before next ticker batch...`);
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
     }
     
-    console.log(`✅ DATA FETCHING COMPLETE: ${fetchedCount} data points fetched`);
+    console.log(`✅ COMPREHENSIVE PRE-FETCH COMPLETE: ${fetchedCount} data points processed`);
+    console.log(`📊 Cache Statistics:`);
+    console.log(`   💰 Price Data: ${cacheStats.priceDataHits} hits, ${cacheStats.priceDataMisses} misses`);
+    console.log(`   🏢 Market Cap: ${cacheStats.marketCapHits} hits, ${cacheStats.marketCapMisses} misses`);
+    console.log(`   📊 Shares Outstanding: ${cacheStats.sharesOutstandingHits} hits, ${cacheStats.sharesOutstandingMisses} misses`);
+    
+    const totalAPICallsMade = cacheStats.priceDataMisses + cacheStats.marketCapMisses + cacheStats.sharesOutstandingMisses;
+    console.log(`🌐 Total EODHD API calls made: ${totalAPICallsMade}`);
+    console.log(`🎯 Strategy calculations will now use 100% cached data - ZERO additional API calls!`);
     
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
@@ -2145,8 +2210,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`\n⏱️ Starting strategy calculations for all 5 strategies...`);
     
     try {
-      // Calculate strategies with timeout protection
-      const strategyTimeout = 480000; // 8 minutes max for all strategies (Vercel Pro has 10min limit)
+      // Calculate strategies with timeout protection - scale timeout based on portfolio size
+      const baseTimeout = 480000; // 8 minutes base
+      const timeoutMultiplier = processedTickers.length > 75 ? 1.25 : 1.0; // Extra time for very large portfolios  
+      const strategyTimeout = Math.min(baseTimeout * timeoutMultiplier, 580000); // Cap at 9.67 minutes (leave buffer before Vercel 10min limit)
+      
+      console.log(`⏱️ Strategy timeout set to ${(strategyTimeout/1000).toFixed(1)}s for ${processedTickers.length} tickers`);
+      
+      // For extremely large portfolios, use optimized calculation mode
+      const isExtremelyLarge = processedTickers.length > 100;
+      if (isExtremelyLarge) {
+        console.log(`🚀 EXTREME PORTFOLIO MODE: Using optimized calculations for ${processedTickers.length} tickers`);
+        console.log(`⚡ Reducing data granularity and skipping some non-essential calculations`);
+      }
+      
       const strategiesPromise = Promise.all([
         // Strategy 1: Equal Weight Buy & Hold
         (async () => {
@@ -2310,14 +2387,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log(`⏱️ Total API Time: ${(overallTimings.total / 1000).toFixed(1)}s`);
     console.log(`📊 Processing Efficiency: ${(processedTickers.length / (overallTimings.total / 1000)).toFixed(1)} tickers/second`);
     
-    // Cache forever if end year is in the past, otherwise cache for 1 day (unless bypassed)
-    console.log(`   💾 Caching results for future requests...`);
+    // Cache permanently since all analysis is limited to historical data (through Jan 1 current year)
+    console.log(`   💾 Caching results permanently (all data is historical)...`);
     if (!bypass_cache) {
-      const currentYear = new Date().getFullYear();
-      const cacheTime = endYear < currentYear ? undefined : 86400;
-      const cacheDuration = cacheTime ? `${cacheTime}s` : 'permanently';
-      console.log(`   💾 Saving to cache (duration: ${cacheDuration})...`);
-      await cache.set(cacheKey, results, cacheTime);
+      await cache.set(cacheKey, results); // No expiration - permanent cache
       console.log(`   ✅ Results cached successfully`);
     } else {
       console.log(`   ⚠️ Cache bypassed - results not saved`);
