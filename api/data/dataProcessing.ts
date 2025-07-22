@@ -321,20 +321,34 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
             
             // Only add entry if we have price data (stock was trading)
             if (priceData?.adjusted_close) {
+              // For non-ETF stocks, require both price AND market cap data
+              if (!isETF(ticker)) {
+                // Check for complete data requirements
+                if (!sharesOutstanding) {
+                  results.errors.push({
+                    ticker,
+                    error: `DATA QUALITY ERROR: ${year} - Price available (${priceData.adjusted_close.toFixed(2)}) but shares outstanding missing. Cannot calculate market cap.`
+                  });
+                  continue; // Skip this year - don't store incomplete data
+                }
+                
+                if (!marketCap) {
+                  results.errors.push({
+                    ticker, 
+                    error: `DATA QUALITY ERROR: ${year} - Price available (${priceData.adjusted_close.toFixed(2)}) but market cap calculation failed. Shares: ${sharesOutstanding?.toLocaleString()}`
+                  });
+                  continue; // Skip this year - don't store incomplete data
+                }
+              }
+              
+              // Store the complete data entry
               tickerData[year.toString()] = {
                 price: priceData.adjusted_close,
                 market_cap: marketCap,
                 shares_outstanding: sharesOutstanding || undefined
               };
               
-              // Warning if we have price but no shares outstanding (for non-ETFs)
-              if (!sharesOutstanding && !isETF(ticker)) {
-                results.warnings.push({
-                  ticker,
-                  year: year.toString(),
-                  issue: 'Price available but shares outstanding missing'
-                });
-              }
+              logger.debug(`${ticker} ${year}: ✅ Complete data - Price: $${priceData.adjusted_close.toFixed(2)}, MarketCap: $${marketCap ? (marketCap/1e9).toFixed(2) + 'B' : 'N/A'}`);
             }
             
           } catch (yearError) {

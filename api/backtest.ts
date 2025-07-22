@@ -65,6 +65,14 @@ async function calculateStrategy(
       const marketCap = getCachedMarketCap(cacheData.data, ticker, year);
       
       if (price && price > 0) {
+        // For non-ETF stocks, require market cap data for proper analysis
+        if (ticker !== 'SPY' && !ticker.match(/ETF|INDEX/i)) {
+          if (!marketCap || marketCap <= 0) {
+            console.log(`⚠️ DATA QUALITY WARNING: ${ticker} ${year} - Has price ($${price.toFixed(2)}) but missing market cap. Excluding from analysis.`);
+            continue; // Skip this ticker for this year
+          }
+        }
+        
         availableTickers.push(ticker);
         tickerPrices[ticker] = price;
         if (marketCap) {
