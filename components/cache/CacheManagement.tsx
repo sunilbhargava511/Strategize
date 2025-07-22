@@ -435,7 +435,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
@@ -728,7 +728,7 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
         )}
 
         {/* Content */}
-        <div className="overflow-auto max-h-[60vh]">
+        <div>
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
