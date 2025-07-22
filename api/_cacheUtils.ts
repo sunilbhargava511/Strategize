@@ -338,13 +338,13 @@ export async function getSharesOutstanding(ticker: string, date: string, apiToke
     // Check SharesOutstanding in General section (most common location)
     if (fundamentals.General && fundamentals.General.SharesOutstanding) {
       sharesOutstanding = fundamentals.General.SharesOutstanding;
-      console.log(`✅ Found shares outstanding in General.SharesOutstanding for ${ticker}: ${sharesOutstanding.toLocaleString()}`);
+      console.log(`✅ Found shares outstanding in General.SharesOutstanding for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
     }
     
     // Fallback: Check in SharesStats section
     else if (fundamentals.SharesStats && fundamentals.SharesStats.SharesOutstanding) {
       sharesOutstanding = fundamentals.SharesStats.SharesOutstanding;
-      console.log(`✅ Found shares outstanding in SharesStats.SharesOutstanding for ${ticker}: ${sharesOutstanding.toLocaleString()}`);
+      console.log(`✅ Found shares outstanding in SharesStats.SharesOutstanding for ${ticker}: ${sharesOutstanding?.toLocaleString()}`);
     }
     
     // Another fallback: Check SharesOutstandingDate in General
