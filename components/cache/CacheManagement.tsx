@@ -243,7 +243,12 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
 
       if (response.ok) {
         const data = await response.json()
-        const summary = `Cache Status for ${tickers.length} tickers:\n\n✅ Already Cached: ${data.cached.length}\n❌ Missing: ${data.missing.length}\n\nCached: ${data.cached.join(', ') || 'None'}\nMissing: ${data.missing.join(', ') || 'None'}`
+        const cachedCount = data.cached?.length || 0
+        const missingCount = data.missing?.length || 0
+        const cachedList = data.cached?.join(', ') || 'None'
+        const missingList = data.missing?.join(', ') || 'None'
+        
+        const summary = `Cache Status for ${tickers.length} tickers:\n\n✅ Already Cached: ${cachedCount}\n❌ Missing: ${missingCount}\n\nCached: ${cachedList}\nMissing: ${missingList}`
         alert(summary)
       } else {
         const errorData = await response.json()
@@ -283,7 +288,13 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
-          alert(`Cache Fill Complete!\n\n✅ Success: ${data.results.success.length}\n❌ Errors: ${data.results.errors.length}\n⚠️ Warnings: ${data.results.warnings.length}\n\nSuccessfully cached: ${data.results.success.join(', ') || 'None'}\nErrors: ${data.results.errors.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'}`)
+          const successCount = data.results?.successful?.length || data.results?.success?.length || 0
+          const errorCount = data.results?.errors?.length || 0
+          const warningCount = data.results?.warnings?.length || 0
+          const successList = data.results?.successful?.join(', ') || data.results?.success?.join(', ') || 'None'
+          const errorList = data.results?.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
+          
+          alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
           setFillCacheInput('')
           fetchCachedAnalyses() // Refresh cache stats
         } else {
