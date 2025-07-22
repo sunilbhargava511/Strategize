@@ -231,7 +231,9 @@ export async function storeFailedTicker(ticker: string, error: string): Promise<
       last_attempt: new Date().toISOString()
     };
     
-    await cache.hset(CACHE_KEYS.FAILED_TICKERS, ticker, failedData);
+    // Store each failed ticker as individual cache entry
+    const cacheKey = `${CACHE_KEYS.FAILED_TICKERS}:${ticker}`;
+    await cache.set(cacheKey, failedData);
     logger.error(`Stored failed ticker: ${ticker} - ${error}`);
   } catch (cacheError) {
     logger.error(`Error storing failed ticker ${ticker}`, cacheError);
@@ -240,8 +242,20 @@ export async function storeFailedTicker(ticker: string, error: string): Promise<
 
 export async function getFailedTickers(): Promise<Record<string, FailedTickerData>> {
   try {
-    const failedTickers = await cache.hgetall(CACHE_KEYS.FAILED_TICKERS);
-    return failedTickers as Record<string, FailedTickerData>;
+    // Get all failed ticker keys
+    const failedTickerKeys = await cache.keys(`${CACHE_KEYS.FAILED_TICKERS}:*`);
+    const failedTickers: Record<string, FailedTickerData> = {};
+    
+    // Fetch all failed ticker data
+    for (const key of failedTickerKeys) {
+      const ticker = key.replace(`${CACHE_KEYS.FAILED_TICKERS}:`, '');
+      const failedData = await cache.get(key) as FailedTickerData;
+      if (failedData) {
+        failedTickers[ticker] = failedData;
+      }
+    }
+    
+    return failedTickers;
   } catch (error) {
     logger.error('Error fetching failed tickers', error);
     return {};
@@ -250,7 +264,8 @@ export async function getFailedTickers(): Promise<Record<string, FailedTickerDat
 
 export async function removeFailedTicker(ticker: string): Promise<void> {
   try {
-    await cache.hdel(CACHE_KEYS.FAILED_TICKERS, ticker);
+    const cacheKey = `${CACHE_KEYS.FAILED_TICKERS}:${ticker}`;
+    await cache.del(cacheKey);
     logger.success(`Removed failed ticker: ${ticker}`);
   } catch (error) {
     logger.error(`Error removing failed ticker ${ticker}`, error);

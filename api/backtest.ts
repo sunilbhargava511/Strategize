@@ -112,24 +112,24 @@ async function calculateStrategy(
     
     if (weightingMethod === 'equalWeight') {
       const equalWeight = 1 / availableTickers.length;
-      availableTickers.forEach(ticker => {
+      availableTickers.forEach((ticker: string) => {
         weights[ticker] = equalWeight;
       });
     } else {
       // Market cap weighting
-      const totalMarketCap = availableTickers.reduce((sum, ticker) => {
+      const totalMarketCap = availableTickers.reduce((sum: number, ticker: string) => {
         return sum + (tickerMarketCaps[ticker] || 0);
       }, 0);
       
       if (totalMarketCap > 0) {
-        availableTickers.forEach(ticker => {
+        availableTickers.forEach((ticker: string) => {
           weights[ticker] = (tickerMarketCaps[ticker] || 0) / totalMarketCap;
         });
       } else {
         // Fallback to equal weight if market cap data unavailable
         console.log(`⚠️ Warning: No market cap data available for year ${year}. Using equal weight fallback.`);
         const equalWeight = 1 / availableTickers.length;
-        availableTickers.forEach(ticker => {
+        availableTickers.forEach((ticker: string) => {
           weights[ticker] = equalWeight;
         });
       }
@@ -150,7 +150,7 @@ async function calculateStrategy(
       currentHoldings = {};
       
       // Allocate based on weights
-      availableTickers.forEach(ticker => {
+      availableTickers.forEach((ticker: string) => {
         const allocation = currentValue * weights[ticker];
         const price = tickerPrices[ticker];
         
@@ -175,13 +175,13 @@ async function calculateStrategy(
         
         // Calculate available cash for new investments
         // For entering stocks, we need to determine how much to invest
-        const totalEnteringWeight = enteringStocks.reduce((sum, ticker) => sum + weights[ticker], 0);
+        const totalEnteringWeight = enteringStocks.reduce((sum: number, ticker: string) => sum + weights[ticker], 0);
         
         if (totalEnteringWeight > 0) {
           // For Buy & Hold, we invest proportionally in new stocks without selling existing positions
           const cashForNewInvestments = currentValue * totalEnteringWeight;
           
-          enteringStocks.forEach(ticker => {
+          enteringStocks.forEach((ticker: string) => {
             const allocation = cashForNewInvestments * (weights[ticker] / totalEnteringWeight);
             const price = tickerPrices[ticker];
             
@@ -493,7 +493,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Process all valid tickers - no arbitrary limits
-    const processedTickers = finalValidTickers;
+    let processedTickers = finalValidTickers;
     const isLargePortfolioOptimized = false;
     
     overallTimings.validation = Date.now() - validationStart;
