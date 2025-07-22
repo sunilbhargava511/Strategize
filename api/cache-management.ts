@@ -1,6 +1,7 @@
 // api/cache-management.ts
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
+import { getFailedTickers } from './cache/cacheOperations';
 
 interface CachedAnalysis {
   key: string;
@@ -106,6 +107,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       console.log(`Found ${uniqueTickers.size} unique tickers with ${totalDataPoints} total data points`);
       
+      // Get failed ticker data
+      const failedTickers = await getFailedTickers();
+      const failedTickersList = Object.values(failedTickers).map(failed => ({
+        ticker: failed.ticker,
+        error: failed.error,
+        failed_at: failed.failed_at,
+        last_attempt: failed.last_attempt
+      }));
+      
       if (backtestKeys.length === 0) {
         return res.status(200).json({
           analyses: [],
@@ -116,7 +126,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tickersList: Array.from(uniqueTickers).sort(),
             totalYearDataPoints: totalDataPoints,
             cacheStructure: 'ticker-based',
-            averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0
+            averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0,
+            failedTickers: failedTickersList,
+            failedTickersCount: failedTickersList.length
           }
         });
       }
@@ -186,7 +198,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           tickersList: Array.from(uniqueTickers).sort(),
           totalYearDataPoints: totalDataPoints,
           cacheStructure: 'ticker-based',
-          averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0
+          averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0,
+          failedTickers: failedTickersList,
+          failedTickersCount: failedTickersList.length
         }
       });
 

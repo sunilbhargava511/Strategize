@@ -44,19 +44,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // Check which tickers are already cached using the shared function
       console.log(`🔍 VALIDATE CACHE: Checking ${tickers.length} tickers`);
       
-      const missing = await validateCacheCoverage(tickers);
-      const cached = tickers.filter((ticker: string) => !missing.includes(ticker));
+      const { missing, eliminated } = await validateCacheCoverage(tickers);
+      const eliminatedTickers = eliminated.map(e => e.ticker);
+      const cached = tickers.filter((ticker: string) => 
+        !missing.includes(ticker) && !eliminatedTickers.includes(ticker)
+      );
       
-      console.log(`✅ VALIDATE COMPLETE: ${cached.length} cached, ${missing.length} missing`);
+      console.log(`✅ VALIDATE COMPLETE: ${cached.length} cached, ${missing.length} missing, ${eliminated.length} eliminated`);
       
       return res.status(200).json({
         success: true,
         cached,
         missing,
+        eliminated,
         summary: {
           total: tickers.length,
           cached: cached.length,
-          missing: missing.length
+          missing: missing.length,
+          eliminated: eliminated.length
         },
         message: missing.length > 0 ? 
           `${missing.length} tickers need to be cached` : 

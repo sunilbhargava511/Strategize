@@ -4,7 +4,7 @@
 import { cache } from '../_upstashCache';
 import { CACHE_KEYS, DATES, SIZE_LIMITS } from '../_constants';
 import { logger } from '../_logger';
-import { setTickerInCache } from '../cache/cacheOperations';
+import { setTickerInCache, storeFailedTicker, removeFailedTicker } from '../cache/cacheOperations';
 import { 
   getSplitAdjustedPriceWithFallback, 
   getSharesOutstanding, 
@@ -360,21 +360,29 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
         // Save to ticker-based cache if we got any data
         if (Object.keys(tickerData).length > 0) {
           await setTickerInCache(ticker, tickerData);
+          // Remove from failed tickers if it was previously failed
+          await removeFailedTicker(ticker);
           results.success.push(ticker);
           logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`);
         } else {
+          const errorMsg = 'No price data found for any year';
           results.errors.push({
             ticker,
-            error: 'No price data found for any year'
+            error: errorMsg
           });
+          // Store in failed tickers
+          await storeFailedTicker(ticker, errorMsg);
           logger.error(`${ticker}: No data available`);
         }
         
       } catch (tickerError) {
+        const errorMsg = tickerError instanceof Error ? tickerError.message : String(tickerError);
         results.errors.push({
           ticker,
-          error: tickerError instanceof Error ? tickerError.message : String(tickerError)
+          error: errorMsg
         });
+        // Store in failed tickers
+        await storeFailedTicker(ticker, errorMsg);
         logger.error(`${ticker}: Failed to process - ${tickerError}`);
       }
     }

@@ -35,9 +35,17 @@ export interface FillCacheResults {
   warnings: Array<{ticker: string, year: string, issue: string}>;
 }
 
+export interface FailedTickerData {
+  ticker: string;
+  error: string;
+  failed_at: string;
+  last_attempt: string;
+}
+
 export interface GetDataResults {
   data: Record<string, TickerCacheData>;
   missing: string[];
+  eliminated: Array<{ticker: string, reason: string}>;
 }
 
 // Strategy calculation types

@@ -24,6 +24,7 @@ export const CACHE_KEYS = {
   ADJUSTED_PRICE: 'adjusted-price',
   MARKET_CAP: 'market-cap',
   MARKET_CAP_API: 'market-cap-api',
+  FAILED_TICKERS: 'failed-tickers',
 } as const;
 
 // Date Constants

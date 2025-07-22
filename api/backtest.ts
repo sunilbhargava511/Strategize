@@ -13,6 +13,7 @@ import {
   getCachedSharesOutstanding,
   getValidUSTickers
 } from './_cacheUtils';
+import { analyzeStockAvailabilityChanges } from './cache/cacheOperations';
 import type { StrategyResult } from './_types';
 
 // Utility function for formatting currency
@@ -40,7 +41,8 @@ async function calculateStrategy(
   initialInvestment: number, 
   weightingMethod: 'equalWeight' | 'marketCap', 
   rebalance: boolean, 
-  historicalData?: Record<string, Record<string, any>>
+  historicalData?: Record<string, Record<string, any>>,
+  availabilityData?: any[]
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
   const yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>> = {};
@@ -52,31 +54,50 @@ async function calculateStrategy(
   // Get data from cache (which is already loaded in the main handler)
   const cacheData = await getDataFromCache([...tickers, 'SPY']);
   
-  for (let year = startYear; year <= endYear; year++) {
+  // Use pre-calculated availability data if provided, otherwise calculate it
+  const stockAvailabilityData = availabilityData || analyzeStockAvailabilityChanges(cacheData.data, tickers, startYear, endYear);
+  if (!availabilityData) {
+    console.log(`📊 Stock availability analysis: Found ${stockAvailabilityData.reduce((sum, year) => sum + year.enteringStocks.length + year.exitingStocks.length, 0)} entry/exit events`);
+  }
+  
+  for (let yearIndex = 0; yearIndex < stockAvailabilityData.length; yearIndex++) {
+    const yearData = stockAvailabilityData[yearIndex];
+    const year = yearData.year;
     const startOfYear = `${year}-01-02`;
     
-    // Get available tickers for this year (stocks that were trading)
-    const availableTickers = [];
+    // Use pre-analyzed availability data
+    const availableTickers = yearData.availableStocks;
+    const enteringStocks = yearData.enteringStocks;
+    const exitingStocks = yearData.exitingStocks;
+    const continuingStocks = yearData.continuingStocks;
+    
     const tickerPrices: Record<string, number> = {};
     const tickerMarketCaps: Record<string, number> = {};
     
-    for (const ticker of tickers) {
+    // Get price and market cap data for available tickers
+    for (const ticker of availableTickers) {
       const price = getCachedPrice(cacheData.data, ticker, year);
       const marketCap = getCachedMarketCap(cacheData.data, ticker, year);
       
-      if (price && price > 0) {
-        // For non-ETF stocks, require market cap data for proper analysis
-        if (ticker !== 'SPY' && !ticker.match(/ETF|INDEX/i)) {
-          if (!marketCap || marketCap <= 0) {
-            console.log(`⚠️ DATA QUALITY WARNING: ${ticker} ${year} - Has price ($${price.toFixed(2)}) but missing market cap. Excluding from analysis.`);
-            continue; // Skip this ticker for this year
-          }
-        }
-        
-        availableTickers.push(ticker);
-        tickerPrices[ticker] = price;
-        if (marketCap) {
-          tickerMarketCaps[ticker] = marketCap;
+      tickerPrices[ticker] = price!; // We know it exists from availability analysis
+      if (marketCap) {
+        tickerMarketCaps[ticker] = marketCap;
+      }
+    }
+    
+    // Handle market exits - sell positions in stocks that are no longer available
+    if (!rebalance && exitingStocks.length > 0) {
+      console.log(`📉 MARKET EXITS in ${year}: Selling positions in ${exitingStocks.length} stocks: ${exitingStocks.slice(0, 3).join(', ')}${exitingStocks.length > 3 ? ` +${exitingStocks.length - 3} more` : ''}`);
+      
+      for (const exitingTicker of exitingStocks) {
+        if (currentHoldings[exitingTicker]) {
+          const shares = currentHoldings[exitingTicker];
+          // Use last known price (previous year) for exit calculation
+          const exitPrice = getCachedPrice(cacheData.data, exitingTicker, year - 1) || 0;
+          const exitValue = shares * exitPrice;
+          currentValue += exitValue;
+          console.log(`   🏪 Sold ${shares.toLocaleString()} shares of ${exitingTicker} at $${exitPrice.toFixed(2)} = ${formatCurrency(exitValue)}`);
+          delete currentHoldings[exitingTicker];
         }
       }
     }
@@ -116,6 +137,16 @@ async function calculateStrategy(
     
     // For first year or if rebalancing, calculate new holdings
     if (year === startYear || rebalance) {
+      // For rebalanced strategies, log entry/exit changes
+      if (rebalance && year > startYear) {
+        if (enteringStocks.length > 0) {
+          console.log(`📈 REBALANCE ENTRIES in ${year}: Adding ${enteringStocks.length} new stocks: ${enteringStocks.slice(0, 3).join(', ')}${enteringStocks.length > 3 ? ` +${enteringStocks.length - 3} more` : ''}`);
+        }
+        if (exitingStocks.length > 0) {
+          console.log(`📉 REBALANCE EXITS in ${year}: Removing ${exitingStocks.length} stocks: ${exitingStocks.slice(0, 3).join(', ')}${exitingStocks.length > 3 ? ` +${exitingStocks.length - 3} more` : ''}`);
+        }
+      }
+      
       currentHoldings = {};
       
       // Allocate based on weights
@@ -137,6 +168,31 @@ async function calculateStrategy(
         
         currentHoldings[ticker] = shares;
       });
+    } else {
+      // Handle market entries for Buy & Hold strategy
+      if (enteringStocks.length > 0) {
+        console.log(`📈 MARKET ENTRIES in ${year}: Buying positions in ${enteringStocks.length} new stocks: ${enteringStocks.slice(0, 3).join(', ')}${enteringStocks.length > 3 ? ` +${enteringStocks.length - 3} more` : ''}`);
+        
+        // Calculate available cash for new investments
+        // For entering stocks, we need to determine how much to invest
+        const totalEnteringWeight = enteringStocks.reduce((sum, ticker) => sum + weights[ticker], 0);
+        
+        if (totalEnteringWeight > 0) {
+          // For Buy & Hold, we invest proportionally in new stocks without selling existing positions
+          const cashForNewInvestments = currentValue * totalEnteringWeight;
+          
+          enteringStocks.forEach(ticker => {
+            const allocation = cashForNewInvestments * (weights[ticker] / totalEnteringWeight);
+            const price = tickerPrices[ticker];
+            
+            if (price && price > 0) {
+              const shares = allocation / price;
+              currentHoldings[ticker] = shares;
+              console.log(`   🛒 Bought ${shares.toLocaleString()} shares of ${ticker} at $${price.toFixed(2)} = ${formatCurrency(allocation)}`);
+            }
+          });
+        }
+      }
     }
     
     // Calculate current portfolio value
@@ -486,7 +542,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Validate that all tickers are in the new cache format
     const allTickersNeeded = ['SPY', ...processedTickers];
-    const missingTickers = await validateCacheCoverage(allTickersNeeded);
+    const { missing: missingTickers, eliminated: eliminatedTickers } = await validateCacheCoverage(allTickersNeeded);
+    
+    // Remove eliminated tickers from processedTickers
+    const eliminatedTickerList = eliminatedTickers.map(e => e.ticker);
+    const finalTickers = processedTickers.filter(ticker => !eliminatedTickerList.includes(ticker));
+    
+    if (eliminatedTickers.length > 0) {
+      console.log(`🚫 TICKERS ELIMINATED: ${eliminatedTickers.length} tickers removed due to data quality issues: ${eliminatedTickers.map(e => `${e.ticker}(${e.reason.substring(0,50)})`).slice(0, 3).join(', ')}`);
+    }
     
     if (missingTickers.length > 0) {
       console.log(`❌ CACHE MISS: ${missingTickers.length} tickers not cached: ${missingTickers.slice(0, 10).join(', ')}${missingTickers.length > 10 ? ` +${missingTickers.length - 10} more` : ''}`);
@@ -494,16 +558,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         error: 'Tickers not cached',
         message: `${missingTickers.length} tickers need to be cached before analysis can run.`,
         missingTickers,
+        eliminatedTickers,
         suggestion: 'Please run the Fill Cache operation first.',
         action: 'fill_cache_required'
       });
     }
     
-    console.log(`✅ CACHE VALIDATION COMPLETE: All ${allTickersNeeded.length} tickers are cached`);
+    // Update processedTickers to use finalTickers (after eliminations)
+    processedTickers = finalTickers;
+    const finalAllTickersNeeded = ['SPY', ...processedTickers];
+    
+    console.log(`✅ CACHE VALIDATION COMPLETE: All ${finalAllTickersNeeded.length} tickers are cached`);
     
     // Load data from cache into runtime structure
     console.log(`\n📊 DATA LOADING PHASE: Loading ticker data from cache...`);
-    const { data: cachedTickerData, missing: stillMissing } = await getDataFromCache(allTickersNeeded);
+    const { data: cachedTickerData, missing: stillMissing, eliminated: stillEliminated } = await getDataFromCache(finalAllTickersNeeded);
     
     if (stillMissing.length > 0) {
       return res.status(500).json({
@@ -515,6 +584,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log(`✅ DATA LOADING COMPLETE: Loaded data for ${Object.keys(cachedTickerData).length} tickers`);
     console.log(`🎯 Strategy calculations will use 100% cached data - ZERO EODHD API calls!`);
+    
+    // Analyze stock availability changes across the analysis period
+    console.log(`\n📊 AVAILABILITY ANALYSIS: Analyzing market entry/exit patterns...`);
+    const availabilityData = analyzeStockAvailabilityChanges(cachedTickerData, processedTickers, startYear, endYear);
+    const totalEntryExitEvents = availabilityData.reduce((sum, year) => sum + year.enteringStocks.length + year.exitingStocks.length, 0);
+    console.log(`📈 Market dynamics: ${totalEntryExitEvents} total entry/exit events detected across ${endYear - startYear + 1} years`);
     
     // Debug: Log historical data collected
     console.log('Historical data collected for Excel export:', {
@@ -560,7 +635,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n⚖️  [1/5] CALCULATING: Equal Weight Buy & Hold Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
           console.log(`     ✅ COMPLETED: Equal Weight Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -573,7 +648,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n📈 [2/5] CALCULATING: Market Cap Buy & Hold Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, historicalData, availabilityData);
           console.log(`     ✅ COMPLETED: Market Cap Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -586,7 +661,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n🔄 [3/5] CALCULATING: Equal Weight Rebalanced Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Rebalanced annually`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, historicalData, availabilityData);
           console.log(`     ✅ COMPLETED: Equal Weight Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -599,7 +674,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n📊 [4/5] CALCULATING: Market Cap Rebalanced Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Rebalanced annually`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, historicalData, availabilityData);
           console.log(`     ✅ COMPLETED: Market Cap Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -612,7 +687,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n🏛️  [5/5] CALCULATING: SPY Benchmark Strategy`);
           console.log(`     📋 Benchmark: SPY ETF only`);
           console.log(`     🏦 Type: Buy & Hold SPY`);
-          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData);
+          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
           console.log(`     ✅ COMPLETED: SPY Benchmark - 1 ticker - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -680,8 +755,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         tickerCount: processedTickers.length,
         tickers: processedTickers,
         originalTickerCount: finalValidTickers.length,
+        eliminatedTickers,
+        eliminatedCount: eliminatedTickers.length,
         isOptimized: isLargePortfolioOptimized,
         analysisDate: new Date().toISOString()
+      },
+      marketAvailabilityChanges: {
+        totalEntryExitEvents: availabilityData?.reduce((sum, year) => sum + year.enteringStocks.length + year.exitingStocks.length, 0) || 0,
+        yearlyChanges: availabilityData?.map(year => ({
+          year: year.year,
+          availableCount: year.availableStocks.length,
+          entriesCount: year.enteringStocks.length,
+          exitsCount: year.exitingStocks.length,
+          entering: year.enteringStocks.slice(0, 5), // Show first 5 for UI
+          exiting: year.exitingStocks.slice(0, 5)    // Show first 5 for UI
+        })) || []
       },
       customName,
       historicalData, // Include the actual data used in calculations

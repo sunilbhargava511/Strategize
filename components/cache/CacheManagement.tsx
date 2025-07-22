@@ -585,6 +585,12 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                   <span className="text-gray-600">Avg Years/Ticker:</span>
                   <span className="font-medium">{cacheStats.averageYearsPerTicker || '0'} years</span>
                 </div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-gray-600">Failed Tickers:</span>
+                  <span className={`font-bold text-lg ${cacheStats.failedTickersCount > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                    {cacheStats.failedTickersCount || 0}
+                  </span>
+                </div>
               </div>
             </div>
             {cacheStats.uniqueTickers > 0 && (
@@ -596,6 +602,28 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                   <div className="text-xs text-gray-700 font-mono grid grid-cols-8 gap-2">
                     {cacheStats.tickersList.map((ticker: string) => (
                       <span key={ticker} className="hover:text-blue-600 cursor-default">{ticker}</span>
+                    ))}
+                  </div>
+                </div>
+              </details>
+            )}
+            {cacheStats.failedTickersCount > 0 && (
+              <details className="mt-3">
+                <summary className="cursor-pointer text-sm text-red-700 hover:text-red-900 font-medium">
+                  View {cacheStats.failedTickersCount} failed tickers
+                </summary>
+                <div className="mt-2 p-3 bg-red-50 rounded-lg border border-red-200 max-h-48 overflow-y-auto">
+                  <div className="space-y-2">
+                    {cacheStats.failedTickers.map((failed: any) => (
+                      <div key={failed.ticker} className="p-2 bg-white rounded border border-red-300">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-sm font-bold text-red-800">{failed.ticker}</span>
+                          <span className="text-xs text-gray-500">
+                            {new Date(failed.failed_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="text-xs text-red-700 mt-1">{failed.error}</div>
+                      </div>
                     ))}
                   </div>
                 </div>
