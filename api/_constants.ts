@@ -37,3 +37,26 @@ export const API_CONFIG = {
   BATCH_LIMIT: 1000,        // Limit for batch operations
   MAX_RETRIES: 5,           // Maximum retry attempts
 } as const;
+
+// Size Limits for Vercel Deployment
+export const SIZE_LIMITS = {
+  // Ticker limits based on performance analysis
+  SMALL_PORTFOLIO: 25,      // ~30-60 seconds execution
+  MEDIUM_PORTFOLIO: 75,     // ~2-5 minutes execution
+  LARGE_PORTFOLIO: 150,     // ~5-8 minutes execution
+  MAX_PORTFOLIO: 200,       // ~8-9.5 minutes (safe Vercel limit)
+  
+  // Request size limits
+  MAX_REQUEST_SIZE: 4 * 1024 * 1024,  // 4MB Vercel limit
+  MAX_CSV_SIZE: 2 * 1024 * 1024,      // 2MB reasonable CSV size
+  
+  // Cache operation limits
+  MAX_FILL_CACHE_BATCH: 50,           // Tickers per fill-cache request
+  FILL_CACHE_BATCH_SIZE: 10,          // Internal batch size for processing tickers
+  FILL_CACHE_PROGRESS_INTERVAL: 5,    // Progress update every N batches
+  MAX_CACHE_EXPORT: 1000,             // Already implemented
+  
+  // Data limits
+  MAX_YEARS_RANGE: 25,                // 2000-2025
+  MIN_YEAR: 2000,                     // Minimum supported year
+} as const;

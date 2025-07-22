@@ -2,7 +2,7 @@
 // Data processing and legacy cache functions for individual data points
 
 import { cache } from '../_upstashCache';
-import { CACHE_KEYS, DATES } from '../_constants';
+import { CACHE_KEYS, DATES, SIZE_LIMITS } from '../_constants';
 import { logger } from '../_logger';
 import { setTickerInCache } from '../cache/cacheOperations';
 import { 
@@ -258,6 +258,7 @@ export async function getMarketCapForYear(ticker: string, year: number, bypassCa
 }
 
 // Fill cache function - populates cache with complete ticker histories
+// COMPLETELY REMOVES individual cache operations, fetches directly from EODHD API
 export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
   const results: FillCacheResults = {
     success: [],
@@ -265,76 +266,125 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
     warnings: []
   };
 
-  logger.info(`Starting cache population for ${tickers.length} tickers`);
+  logger.info(`Starting cache population for ${tickers.length} tickers (BATCH PROCESSING MODE)`);
   
   // Get current year for date range
   const currentYear = new Date().getFullYear();
-  const maxYear = currentYear; // Up to current year
+  const maxYear = currentYear;
   const minYear = DATES.MIN_YEAR;
+  const BATCH_SIZE = SIZE_LIMITS.FILL_CACHE_BATCH_SIZE;
+  const PROGRESS_UPDATE_INTERVAL = SIZE_LIMITS.FILL_CACHE_PROGRESS_INTERVAL;
   
-  for (const ticker of tickers) {
-    try {
-      logger.debug(`Processing ${ticker}...`);
-      
-      
-      // Build complete ticker data
-      const tickerData: TickerCacheData = {};
-      
-      for (let year = minYear; year <= maxYear; year++) {
-        try {
-          // Fetch all three data types for this year (bypass individual caching)
-          const [priceData, marketCap, sharesOutstanding] = await Promise.all([
-            getAdjustedPriceForYear(ticker, year, true, null),
-            getMarketCapForYear(ticker, year, true, null),
-            getSharesOutstandingForYear(ticker, year, true, null)
-          ]);
-          
-          // Only add entry if we have price data (stock was trading)
-          if (priceData) {
-            tickerData[year] = {
-              price: priceData,
-              market_cap: marketCap || undefined,
-              shares_outstanding: sharesOutstanding || undefined
-            };
+  // Get API token
+  const EOD_API_KEY = process.env.EODHD_API_TOKEN;
+  if (!EOD_API_KEY) {
+    logger.error('EODHD_API_TOKEN not configured');
+    throw new Error('EODHD_API_TOKEN environment variable is required');
+  }
+  
+  // Process tickers in batches
+  const totalBatches = Math.ceil(tickers.length / BATCH_SIZE);
+  logger.info(`📦 Processing ${tickers.length} tickers in ${totalBatches} batches of ${BATCH_SIZE}`);
+  
+  for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+    const batchStart = batchIndex * BATCH_SIZE;
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, tickers.length);
+    const batchTickers = tickers.slice(batchStart, batchEnd);
+    const batchStartTime = Date.now();
+    
+    logger.info(`🔄 BATCH ${batchIndex + 1}/${totalBatches}: Processing tickers ${batchStart + 1}-${batchEnd} (${batchTickers.join(', ')})`);
+    
+    // Process all tickers in current batch
+    for (const ticker of batchTickers) {
+      try {
+        logger.debug(`Processing ${ticker}...`);
+        
+        // Build complete ticker data by fetching directly from EODHD API
+        const tickerData: TickerCacheData = {};
+        const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+        
+        for (let year = minYear; year <= maxYear; year++) {
+          try {
+            const startOfYearDate = `${year}${DATES.NEW_YEAR_HOLIDAY}`;
             
-            // Warning if we have price but no shares outstanding
-            if (!sharesOutstanding) {
-              results.warnings.push({
-                ticker,
-                year: year.toString(),
-                issue: 'Price available but shares outstanding missing'
-              });
+            // Fetch all data directly from EODHD API (NO individual cache operations)
+            const [priceData, sharesOutstanding] = await Promise.all([
+              getSplitAdjustedPriceWithFallback(tickerWithExchange, startOfYearDate, EOD_API_KEY),
+              isETF(ticker) ? Promise.resolve(null) : getSharesOutstanding(tickerWithExchange, startOfYearDate, EOD_API_KEY)
+            ]);
+            
+            // Calculate market cap if we have both price and shares
+            let marketCap: number | undefined;
+            if (priceData?.adjusted_close && sharesOutstanding) {
+              marketCap = priceData.adjusted_close * sharesOutstanding;
             }
+            
+            // Only add entry if we have price data (stock was trading)
+            if (priceData?.adjusted_close) {
+              tickerData[year] = {
+                price: priceData.adjusted_close,
+                market_cap: marketCap,
+                shares_outstanding: sharesOutstanding || undefined
+              };
+              
+              // Warning if we have price but no shares outstanding (for non-ETFs)
+              if (!sharesOutstanding && !isETF(ticker)) {
+                results.warnings.push({
+                  ticker,
+                  year: year.toString(),
+                  issue: 'Price available but shares outstanding missing'
+                });
+              }
+            }
+            
+          } catch (yearError) {
+            // Continue processing other years if one fails
+            logger.debug(`${ticker} ${year}: ${yearError}`);
           }
-          
-        } catch (yearError) {
-          // Continue processing other years if one fails
-          logger.debug(`${ticker} ${year}: ${yearError}`);
         }
-      }
-      
-      // Save to cache if we got any data
-      if (Object.keys(tickerData).length > 0) {
-        await setTickerInCache(ticker, tickerData);
-        results.success.push(ticker);
-        logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`);
-      } else {
+        
+        // Save to ticker-based cache if we got any data
+        if (Object.keys(tickerData).length > 0) {
+          await setTickerInCache(ticker, tickerData);
+          results.success.push(ticker);
+          logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`);
+        } else {
+          results.errors.push({
+            ticker,
+            error: 'No price data found for any year'
+          });
+          logger.error(`${ticker}: No data available`);
+        }
+        
+      } catch (tickerError) {
         results.errors.push({
           ticker,
-          error: 'No price data found for any year'
+          error: tickerError instanceof Error ? tickerError.message : String(tickerError)
         });
-        logger.error(`${ticker}: No data available`);
+        logger.error(`${ticker}: Failed to process - ${tickerError}`);
       }
+    }
+    
+    const batchTime = Date.now() - batchStartTime;
+    logger.success(`✅ BATCH ${batchIndex + 1}/${totalBatches} COMPLETE: ${batchTickers.length} tickers processed in ${(batchTime/1000).toFixed(1)}s`);
+    
+    // Progress update every 5 batches
+    if ((batchIndex + 1) % PROGRESS_UPDATE_INTERVAL === 0 || batchIndex + 1 === totalBatches) {
+      const progress = ((batchIndex + 1) / totalBatches * 100).toFixed(1);
+      const processed = Math.min(batchEnd, tickers.length);
+      const remaining = tickers.length - processed;
       
-    } catch (tickerError) {
-      results.errors.push({
-        ticker,
-        error: tickerError instanceof Error ? tickerError.message : String(tickerError)
-      });
-      logger.error(`${ticker}: Failed to process - ${tickerError}`);
+      logger.info(`📊 PROGRESS UPDATE: ${progress}% complete (${processed}/${tickers.length} tickers)`);
+      logger.info(`   ✅ Success: ${results.success.length}, ❌ Errors: ${results.errors.length}, ⚠️  Warnings: ${results.warnings.length}`);
+      logger.info(`   ⏱️  Average: ${(batchTime/(batchTickers.length * 1000)).toFixed(2)}s per ticker`);
+      logger.info(`   📈 Progress Bar: [${'█'.repeat(Math.floor(parseFloat(progress)/5))}${'-'.repeat(20-Math.floor(parseFloat(progress)/5))}] ${progress}%`);
+      if (remaining > 0) {
+        logger.info(`   ⏳ Remaining: ${remaining} tickers (${Math.ceil(remaining/BATCH_SIZE)} batches)`);
+      }
     }
   }
   
-  logger.success(`FILL CACHE COMPLETE: ${results.success.length} success, ${results.errors.length} errors, ${results.warnings.length} warnings`);
+  logger.success(`🎉 FILL CACHE COMPLETE: ${results.success.length} success, ${results.errors.length} errors, ${results.warnings.length} warnings`);
+  logger.info(`📊 FINAL STATS: Processed ${tickers.length} tickers in ${totalBatches} batches`);
   return results;
 }

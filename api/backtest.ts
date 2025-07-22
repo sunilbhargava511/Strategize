@@ -11,8 +11,7 @@ import {
   getCachedPrice,
   getCachedMarketCap,
   getCachedSharesOutstanding,
-  getValidUSTickers,
-  getAdjustedPriceForYear
+  getValidUSTickers
 } from './_cacheUtils';
 import type { StrategyResult } from './_types';
 
