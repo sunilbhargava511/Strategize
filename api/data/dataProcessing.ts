@@ -321,7 +321,7 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
             
             // Only add entry if we have price data (stock was trading)
             if (priceData?.adjusted_close) {
-              tickerData[year] = {
+              tickerData[year.toString()] = {
                 price: priceData.adjusted_close,
                 market_cap: marketCap,
                 shares_outstanding: sharesOutstanding || undefined
