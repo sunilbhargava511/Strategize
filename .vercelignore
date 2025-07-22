@@ -18,9 +18,9 @@ Thumbs.db
 .git/
 .gitignore
 
-# Documentation
+# Documentation (but keep CODEBASE.md)
 README.md
-*.md
+!CODEBASE.md
 
 # Test files
 *.test.ts
