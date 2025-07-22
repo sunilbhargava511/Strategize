@@ -220,13 +220,9 @@ export default function Home() {
         }
       }, updateInterval);
 
-      // Route very large portfolios to batch processing endpoint
-      const isExtremelyLarge = detectedTickers.length >= 100
-      const apiEndpoint = isExtremelyLarge ? '/api/batch-backtest' : '/api/backtest'
-      
-      if (isExtremelyLarge) {
-        console.log(`🚀 Using batch processing for ${detectedTickers.length} tickers`)
-      }
+      // All portfolios now use the main backtest endpoint
+      // The comprehensive pre-fetching fixes allow handling of large portfolios
+      const apiEndpoint = '/api/backtest'
 
       const response = await fetch(apiEndpoint, {
         method: 'POST',
