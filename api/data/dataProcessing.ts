@@ -327,7 +327,7 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
                 if (!sharesOutstanding) {
                   results.errors.push({
                     ticker,
-                    error: `DATA QUALITY ERROR: ${year} - Price available (${priceData.adjusted_close.toFixed(2)}) but shares outstanding missing. Cannot calculate market cap.`
+                    error: `DATA QUALITY ERROR: ${year} - Price available ($${priceData.adjusted_close.toFixed(2)}) but historical shares outstanding unavailable. This ticker requires historical fundamentals data.`
                   });
                   continue; // Skip this year - don't store incomplete data
                 }
@@ -359,11 +359,27 @@ export async function fillCache(tickers: string[]): Promise<FillCacheResults> {
         
         // Save to ticker-based cache if we got any data
         if (Object.keys(tickerData).length > 0) {
-          await setTickerInCache(ticker, tickerData);
-          // Remove from failed tickers if it was previously failed
-          await removeFailedTicker(ticker);
-          results.success.push(ticker);
-          logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`);
+          // Check if we have too many missing years for non-ETF stocks
+          const totalYears = maxYear - minYear + 1;
+          const missingYears = totalYears - Object.keys(tickerData).length;
+          const missingPercentage = (missingYears / totalYears) * 100;
+          
+          if (!isETF(ticker) && missingPercentage > 50) {
+            const errorMsg = `Insufficient historical data: Only ${Object.keys(tickerData).length} of ${totalYears} years have complete data (${missingPercentage.toFixed(0)}% missing). Historical fundamentals may be unavailable.`;
+            results.errors.push({
+              ticker,
+              error: errorMsg
+            });
+            // Store in failed tickers
+            await storeFailedTicker(ticker, errorMsg);
+            logger.error(`${ticker}: ${errorMsg}`);
+          } else {
+            await setTickerInCache(ticker, tickerData);
+            // Remove from failed tickers if it was previously failed
+            await removeFailedTicker(ticker);
+            results.success.push(ticker);
+            logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`);
+          }
         } else {
           const errorMsg = 'No price data found for any year';
           results.errors.push({
