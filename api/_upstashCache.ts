@@ -97,6 +97,18 @@ export const cache = {
       console.error('Cache mdel error:', error);
       return 0;
     }
+  },
+
+  // Flush all keys in the database (nuclear option)
+  flushdb: async (): Promise<boolean> => {
+    if (!redis) return false;
+    try {
+      await redis.flushdb();
+      return true;
+    } catch (error) {
+      console.error('Cache flushdb error:', error);
+      return false;
+    }
   }
 };
 

@@ -302,14 +302,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Use FLUSHDB for nuclear option instead of KEYS + MDEL
         // This avoids the Redis KEYS command limit
         try {
-          await cache.flushdb();
-          console.log(`✅ Successfully cleared ALL cache using FLUSHDB`);
-          
-          return res.status(200).json({
-            success: true,
-            deletedCount: 'ALL',
-            message: `NUCLEAR CLEAR: Deleted ALL cache entries using FLUSHDB`
-          });
+          const flushed = await cache.flushdb();
+          if (flushed) {
+            console.log(`✅ Successfully cleared ALL cache using FLUSHDB`);
+            
+            return res.status(200).json({
+              success: true,
+              deletedCount: 'ALL',
+              message: `NUCLEAR CLEAR: Deleted ALL cache entries using FLUSHDB`
+            });
+          } else {
+            throw new Error('FLUSHDB returned false');
+          }
         } catch (flushError) {
           console.error('FLUSHDB failed, trying KEYS approach:', flushError);
           
