@@ -143,6 +143,15 @@ async function calculateStrategy(
         if (exitingStocks.length > 0) {
           console.log(`📉 REBALANCE EXITS in ${year}: Removing ${exitingStocks.length} stocks: ${exitingStocks.slice(0, 3).join(', ')}${exitingStocks.length > 3 ? ` +${exitingStocks.length - 3} more` : ''}`);
         }
+        
+        // For rebalancing: first calculate current portfolio value, then liquidate
+        const portfolioValueBeforeRebalancing = Object.entries(currentHoldings).reduce((total, [ticker, shares]) => {
+          const currentPrice = tickerPrices[ticker];
+          return total + (shares * currentPrice || 0);
+        }, 0);
+        
+        console.log(`💰 Portfolio value before rebalancing ${year}: ${formatCurrency(portfolioValueBeforeRebalancing)}`);
+        currentValue = portfolioValueBeforeRebalancing;
       }
       
       currentHoldings = {};
