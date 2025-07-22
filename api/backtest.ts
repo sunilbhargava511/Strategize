@@ -202,11 +202,14 @@ async function calculateStrategy(
       }
     }
     
-    // Calculate current portfolio value
-    currentValue = Object.entries(currentHoldings).reduce((total, [ticker, shares]) => {
-      const price = tickerPrices[ticker] || 0;
-      return total + (shares * price);
-    }, 0);
+    // Calculate current portfolio value (only update for Buy & Hold strategies)
+    // For rebalanced strategies, currentValue is already set during rebalancing
+    if (!rebalance || year === startYear) {
+      currentValue = Object.entries(currentHoldings).reduce((total, [ticker, shares]) => {
+        const price = tickerPrices[ticker] || 0;
+        return total + (shares * price);
+      }, 0);
+    }
     
     yearlyValues[year] = currentValue;
     
