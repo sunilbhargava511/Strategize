@@ -2094,6 +2094,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     let fetchedCount = 0;
     
+    // Initialize cache statistics for comprehensive pre-fetching
+    const cacheStats = {
+      priceDataHits: 0,
+      priceDataMisses: 0,
+      marketCapHits: 0,
+      marketCapMisses: 0,
+      sharesOutstandingHits: 0,
+      sharesOutstandingMisses: 0
+    };
+    
     // Pre-fetch data for all portfolio sizes to ensure stability and cache efficiency
     // This sequential approach with rate limiting is much more stable than concurrent API calls during strategy calculations
     {
@@ -2103,16 +2113,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       let cacheHits = 0;
       let cacheTotal = 0;
-      
-      // Initialize cache statistics for comprehensive pre-fetching
-      const cacheStats = {
-        priceDataHits: 0,
-        priceDataMisses: 0,
-        marketCapHits: 0,
-        marketCapMisses: 0,
-        sharesOutstandingHits: 0,
-        sharesOutstandingMisses: 0
-      };
       
       // Comprehensive data pre-fetching: Price, Market Cap, and Shares Outstanding
       // This ensures ZERO EODHD API calls during strategy calculations
