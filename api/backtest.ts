@@ -1,28 +1,20 @@
 // api/backtest.ts
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
+import { handleApiError } from './_errorHandler';
+import { logger } from './_logger';
 import {
   TickerYearData,
   TickerCacheData,
-  getTickerFromCache,
-  setTickerInCache,
-  listCachedTickers,
-  fillCache,
   getDataFromCache,
   validateCacheCoverage,
   getCachedPrice,
   getCachedMarketCap,
   getCachedSharesOutstanding,
-  isETF,
-  tryFetchPriceForDate,
-  getSplitAdjustedPriceWithFallback,
   getValidUSTickers,
-  getSharesOutstanding,
-  getSharesOutstandingForYear,
-  getAdjustedPriceForYear,
-  getMarketCapFromAPI,
-  getMarketCapForYear
+  getAdjustedPriceForYear
 } from './_cacheUtils';
+import type { StrategyResult } from './_types';
 
 // Utility function for formatting currency
 const formatCurrency = (value: number) => {
@@ -36,210 +28,10 @@ const formatCurrency = (value: number) => {
 
 // Cache utility functions are now imported from _cacheUtils.ts
 
-interface StockData {
-  ticker: string;
-  date: string;
-  price: number;
-  adjusted_close: number;
-  market_cap?: number;
-  shares_outstanding?: number;
-}
 
-interface StrategyResult {
-  totalReturn: number;
-  annualizedReturn: number;
-  finalValue: number;
-  yearlyValues: Record<number, number>;
-  yearlyHoldings: Record<number, Record<string, { weight: number; shares: number; value: number; price: number; marketCap?: number; sharesOutstanding?: number; }>>;
-  portfolioComposition: Record<string, { initialWeight: number; finalWeight: number; available: boolean; }>;
-  cacheStats?: any;
-  timings?: Record<string, number>;
-}
+// StrategyResult interface now imported from _types.ts
 
-// Helper function to get both price and market cap for a ticker in a given year
-// Returns null if either value is unavailable  
-async function getPriceAndMarketCapForYear(ticker: string, year: number, bypassCache: boolean = false, cacheStats?: any): Promise<{ price: number; marketCap: number } | null> {
-  try {
-    // Get both values in parallel for efficiency
-    const [price, marketCap] = await Promise.all([
-      getAdjustedPriceForYear(ticker, year, bypassCache, cacheStats),
-      getMarketCapForYear(ticker, year, bypassCache, cacheStats)
-    ]);
-    
-    if (price && marketCap) {
-      return { price, marketCap };
-    }
-    
-    const missingData = [];
-    if (!price) missingData.push('price');
-    if (!marketCap) missingData.push('market cap');
-    console.log(`❌ Cannot get complete data for ${ticker} ${year}: missing ${missingData.join(' and ')}`);
-    return null;
-    
-  } catch (error) {
-    console.error(`Error getting price and market cap for ${ticker} in ${year}:`, error);
-    return null;
-  }
-}
 
-// Global cache statistics
-let globalCacheStats = { hits: 0, misses: 0, total: 0 };
-
-async function fetchStockData(ticker: string, date: string, bypassCache: boolean = false, historicalData?: Record<string, Record<string, any>>): Promise<StockData | null> {
-  try {
-    // Check cache first unless bypassed
-    const cacheKey = `market-cap:${ticker}:${date}`;
-    if (!bypassCache) {
-      const cached = await cache.get(cacheKey) as any;
-      if (cached) {
-        globalCacheStats.hits++;
-        globalCacheStats.total++;
-        const hitRate = Math.round((globalCacheStats.hits / globalCacheStats.total) * 100);
-        console.log(`📦 Cache hit for ${ticker} on ${date} (${hitRate}% hit rate: ${globalCacheStats.hits}/${globalCacheStats.total})`);
-        
-        // Store in historicalData if provided
-        if (historicalData) {
-          if (!historicalData[ticker]) historicalData[ticker] = {};
-          historicalData[ticker][date] = {
-            ticker: ticker,
-            date: cached.date || date,
-            price: cached.adjusted_close || cached.price,
-            adjusted_close: cached.adjusted_close || cached.price,
-            market_cap: cached.market_cap,
-            shares_outstanding: cached.shares_outstanding
-          };
-        }
-        
-        return {
-          ticker: ticker,
-          date: cached.date || date,
-          price: cached.adjusted_close || cached.price,
-          adjusted_close: cached.adjusted_close || cached.price,
-          market_cap: cached.market_cap,
-          shares_outstanding: cached.shares_outstanding
-        };
-      }
-    }
-    
-    globalCacheStats.misses++;
-    globalCacheStats.total++;
-    const hitRate = Math.round((globalCacheStats.hits / globalCacheStats.total) * 100);
-    console.log(`🔍 Cache miss for ${ticker} on ${date}, fetching from EODHD (${hitRate}% hit rate: ${globalCacheStats.hits}/${globalCacheStats.total})`);
-    
-    // Add .US exchange suffix if not present
-    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
-    
-    // Call EODHD API to populate cache
-    const EOD_API_KEY = process.env.EODHD_API_TOKEN;
-    if (!EOD_API_KEY) {
-      console.error('EODHD_API_TOKEN not configured');
-      return null;
-    }
-    
-    // Use fundamentals API to get market cap data
-    const fundamentalsUrl = `https://eodhd.com/api/fundamentals/${tickerWithExchange}?api_token=${EOD_API_KEY}&fmt=json`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
-    
-    const response = await fetch(fundamentalsUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.error(`EODHD fundamentals API error for ${tickerWithExchange}: ${response.status} ${response.statusText}`);
-      return null;
-    }
-    
-    const fundamentals = await response.json();
-    
-    if (!fundamentals) {
-      console.error(`No fundamentals data for ${tickerWithExchange}`);
-      return null;
-    }
-    
-    // Get price data for the same date
-    const eodUrl = `https://eodhd.com/api/eod/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
-    
-    const priceController = new AbortController();
-    const priceTimeoutId = setTimeout(() => priceController.abort(), 15000);
-    
-    const priceResponse = await fetch(eodUrl, { signal: priceController.signal });
-    clearTimeout(priceTimeoutId);
-    
-    if (!priceResponse.ok) {
-      console.error(`EODHD price API error for ${tickerWithExchange}: ${priceResponse.status} ${priceResponse.statusText}`);
-      return null;
-    }
-    
-    const priceData = await priceResponse.json();
-    
-    if (!priceData || (Array.isArray(priceData) && priceData.length === 0)) {
-      console.error(`No price data for ${tickerWithExchange} on ${date}`);
-      return null;
-    }
-    
-    const dayData = Array.isArray(priceData) ? priceData[0] : priceData;
-    
-    if (!dayData || !dayData.adjusted_close) {
-      console.error(`No adjusted close price for ${tickerWithExchange} on ${date}`);
-      return null;
-    }
-    
-    let marketCap: number | null = null;
-    let sharesOutstanding: number | null = null;
-    
-    // Look for market cap in fundamentals data
-    if (fundamentals.Valuation && fundamentals.Valuation.MarketCapitalization) {
-      marketCap = fundamentals.Valuation.MarketCapitalization;
-    }
-    
-    // Look for shares outstanding - EODHD provides this in multiple possible locations
-    if (fundamentals.General && fundamentals.General.SharesOutstanding) {
-      sharesOutstanding = fundamentals.General.SharesOutstanding;
-    } else if (fundamentals.SharesStats && fundamentals.SharesStats.SharesOutstanding) {
-      sharesOutstanding = fundamentals.SharesStats.SharesOutstanding;
-    }
-    
-    // If we don't have market cap but we have shares outstanding and price, calculate it
-    if (!marketCap && sharesOutstanding && dayData.adjusted_close) {
-      marketCap = sharesOutstanding * dayData.adjusted_close;
-      console.log(`Calculated market cap for ${ticker}: ${sharesOutstanding.toLocaleString()} shares × $${dayData.adjusted_close.toFixed(2)} = $${(marketCap / 1000000000).toFixed(2)}B`);
-    }
-    
-    const result = {
-      ticker: ticker,
-      date: dayData.date || date,
-      price: dayData.adjusted_close,
-      adjusted_close: dayData.adjusted_close,
-      market_cap: marketCap || undefined,
-      shares_outstanding: sharesOutstanding || undefined
-    };
-    
-    // Cache the combined result
-    try {
-      await cache.set(cacheKey, result, 300); // Cache for 5 minutes
-      console.log(`✅ Cached market cap data for ${ticker} on ${date}:`, {
-        price: result.adjusted_close,
-        market_cap: result.market_cap,
-        shares: result.shares_outstanding
-      });
-    } catch (cacheError) {
-      console.warn(`Failed to cache market cap data for ${ticker}:`, cacheError);
-    }
-    
-    // Store in historicalData if provided
-    if (historicalData) {
-      if (!historicalData[ticker]) historicalData[ticker] = {};
-      historicalData[ticker][date] = result;
-    }
-    
-    return result;
-    
-  } catch (error: any) {
-    console.error(`Error fetching stock data for ${ticker} on ${date}:`, error.message);
-    return null;
-  }
-}
 
 // Strategy calculation function
 async function calculateStrategy(
@@ -249,7 +41,6 @@ async function calculateStrategy(
   initialInvestment: number, 
   weightingMethod: 'equalWeight' | 'marketCap', 
   rebalance: boolean, 
-  bypassCache: boolean = false,
   historicalData?: Record<string, Record<string, any>>
 ): Promise<StrategyResult> {
   const yearlyValues: Record<number, number> = {};
@@ -395,9 +186,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const apiStartTime = Date.now();
-    console.log('=== BACKTEST API CALLED (v2) ===');
-    const { startYear, endYear, initialInvestment, tickers = [], bypass_cache = false, customName } = req.body;
-    console.log('Request body:', { startYear, endYear, initialInvestment, tickers, bypass_cache, customName });
+    logger.info('BACKTEST API CALLED (v2)');
+    const { startYear, endYear, initialInvestment, tickers = [], customName } = req.body;
+    logger.debug('Request body:', { startYear, endYear, initialInvestment, tickers, customName });
     
     // Date validation: No analysis beyond Jan 1 of current year
     const currentYear = new Date().getFullYear();
@@ -508,7 +299,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // First, get the list of all valid US tickers from EODHD (active and delisted)
     console.log(`\n📋 VALIDATING TICKERS WITH EODHD EXCHANGE LISTS...`);
-    const tickerLists = await getValidUSTickers(bypass_cache);
+    const tickerLists = await getValidUSTickers(false);
     
     const finalValidTickers: string[] = [];
     const problemTickers: string[] = [];
@@ -589,46 +380,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
     
-    // For tickers not in exchange lists, optionally check for historical data
-    if (problemTickers.length > 0 && bypass_cache) {
-      console.log(`\n🔍 DOUBLE-CHECKING ${problemTickers.length} UNRECOGNIZED TICKERS FOR HISTORICAL DATA...`);
-      
-      const tickersToRecheck = [...problemTickers];
-      problemTickers.length = 0; // Clear array
-      
-      for (const ticker of tickersToRecheck) {
-        try {
-          // Check if ticker has any historical data by trying to fetch data for start year
-          const testDate = `${startYear}-01-02`;
-          const testData = await fetchStockData(ticker, testDate, true);
-          
-          if (testData && testData.price > 0) {
-            // Ticker has historical data even though not in exchange lists
-            finalValidTickers.push(ticker);
-            
-            const validationResult = tickerValidationResults.find(r => 
-              r.ticker === ticker || r.correctedTo === ticker
-            );
-            
-            if (validationResult) {
-              validationResult.status = 'valid';
-              validationResult.message = `Not in EODHD lists but has historical data (possibly recent delisting or data issue)`;
-              validationResult.hasHistoricalData = true;
-            }
-            
-            console.log(`   ✓ ${ticker} - Has historical data (not in lists, possibly very recent delisting)`);
-          } else {
-            // No data found - definitely invalid
-            problemTickers.push(ticker);
-            console.log(`   ✗ ${ticker} - No historical data found`);
-          }
-        } catch (error) {
-          // API error or ticker doesn't exist
-          problemTickers.push(ticker);
-          console.log(`   ✗ ${ticker} - Error checking data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      }
-    }
+    // Note: Bypass cache mode has been removed - only tickers in EODHD exchange lists are allowed
     
     // Log validation summary
     console.log(`\n✅ TICKER VALIDATION COMPLETE: ${finalValidTickers.length}/${tickers.length} valid tickers`);
@@ -679,82 +431,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Check cache first (unless bypassed)
     const tickerString = processedTickers.sort().join(',');
     const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickerString}`;
-    if (!bypass_cache) {
-      const cached = await cache.get(cacheKey);
-      if (cached) {
-        console.log('Returning cached backtest results');
-        return res.status(200).json({ ...cached, from_cache: true });
-      }
-    } else {
-      console.log('Cache bypassed for backtest - clearing any existing cache');
-      // Clear existing cache entry when bypass is requested
-      try {
-        await cache.del(cacheKey);
-        console.log(`Cleared cache for key: ${cacheKey}`);
-      } catch (error) {
-        console.warn('Failed to clear cache:', error);
-      }
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      logger.info('Returning cached backtest results');
+      return res.status(200).json({ ...cached, from_cache: true });
     }
 
     // Check if we have EODHD API token
     if (!process.env.EODHD_API_TOKEN) {
-      console.log('No EODHD_API_TOKEN found, returning mock data');
-      // Return mock data if no API token
-      const yearRange = endYear - startYear;
-      const baseReturn = 8 + (Math.random() * 4);
-      
-      const results = {
-        equalWeightBuyHold: {
-          totalReturn: ((Math.pow(1 + baseReturn/100, yearRange) - 1) * 100),
-          annualizedReturn: baseReturn,
-          finalValue: initialInvestment * Math.pow(1 + baseReturn/100, yearRange),
-          yearlyValues: {},
-          yearlyHoldings: {},
-          portfolioComposition: {}
-        },
-        marketCapBuyHold: {
-          totalReturn: ((Math.pow(1 + (baseReturn + 2)/100, yearRange) - 1) * 100),
-          annualizedReturn: baseReturn + 2,
-          finalValue: initialInvestment * Math.pow(1 + (baseReturn + 2)/100, yearRange),
-          yearlyValues: {},
-          yearlyHoldings: {},
-          portfolioComposition: {}
-        },
-        equalWeightRebalanced: {
-          totalReturn: ((Math.pow(1 + (baseReturn + 3)/100, yearRange) - 1) * 100),
-          annualizedReturn: baseReturn + 3,
-          finalValue: initialInvestment * Math.pow(1 + (baseReturn + 3)/100, yearRange),
-          yearlyValues: {},
-          yearlyHoldings: {},
-          portfolioComposition: {}
-        },
-        marketCapRebalanced: {
-          totalReturn: ((Math.pow(1 + (baseReturn + 1.5)/100, yearRange) - 1) * 100),
-          annualizedReturn: baseReturn + 1.5,
-          finalValue: initialInvestment * Math.pow(1 + (baseReturn + 1.5)/100, yearRange),
-          yearlyValues: {},
-          yearlyHoldings: {},
-          portfolioComposition: {}
-        },
-        parameters: { 
-          startYear, 
-          endYear, 
-          initialInvestment,
-          tickerCount: tickers.length,
-          tickers: tickers
-        },
-        message: 'Note: EODHD API token not configured. Using simulated data.'
-      };
-      
-      // Don't cache mock data forever - use 1 hour (unless bypassed)
-      if (!bypass_cache) {
-        await cache.set(cacheKey, results, 3600);
-      }
-      return res.status(200).json({ ...results, from_cache: false });
+      return res.status(500).json({
+        error: 'API configuration error',
+        message: 'EODHD_API_TOKEN environment variable is required for backtesting operations',
+        details: 'Please configure the EODHD API token to perform analysis with real market data'
+      });
     }
 
     // Calculate real results using EODHD data
-    console.log(`EODHD_API_TOKEN found, running real backtest for ${processedTickers.length} tickers from ${startYear} to ${endYear}`);
+    logger.info(`Running backtest for ${processedTickers.length} tickers from ${startYear} to ${endYear}`);
     
     // Collect historical data used in calculations for consistent Excel export
     const historicalData: Record<string, Record<string, any>> = {};
@@ -845,7 +538,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n⚖️  [1/5] CALCULATING: Equal Weight Buy & Hold Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', false, historicalData);
           console.log(`     ✅ COMPLETED: Equal Weight Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -858,7 +551,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n📈 [2/5] CALCULATING: Market Cap Buy & Hold Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Buy & Hold (no rebalancing)`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, bypass_cache, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', false, historicalData);
           console.log(`     ✅ COMPLETED: Market Cap Buy & Hold - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -871,7 +564,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n🔄 [3/5] CALCULATING: Equal Weight Rebalanced Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, equal allocation each`);
           console.log(`     🏦 Type: Rebalanced annually`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, bypass_cache, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'equalWeight', true, historicalData);
           console.log(`     ✅ COMPLETED: Equal Weight Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -884,7 +577,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n📊 [4/5] CALCULATING: Market Cap Rebalanced Strategy`);
           console.log(`     📋 Portfolio: ${processedTickers.length} tickers, weighted by market cap`);
           console.log(`     🏦 Type: Rebalanced annually`);
-          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, bypass_cache, historicalData);
+          const result = await calculateStrategy(processedTickers, startYear, endYear, initialInvestment, 'marketCap', true, historicalData);
           console.log(`     ✅ COMPLETED: Market Cap Rebalanced - ${processedTickers.length} tickers - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -897,7 +590,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           console.log(`\n🏛️  [5/5] CALCULATING: SPY Benchmark Strategy`);
           console.log(`     📋 Benchmark: SPY ETF only`);
           console.log(`     🏦 Type: Buy & Hold SPY`);
-          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, bypass_cache, historicalData);
+          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData);
           console.log(`     ✅ COMPLETED: SPY Benchmark - 1 ticker - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
@@ -938,7 +631,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const topStrategy = strategies.reduce((a, b) => a.value > b.value ? a : b);
       console.log(`🏆 TOP PERFORMER: ${topStrategy.icon} ${topStrategy.name} - ${formatCurrency(topStrategy.value)}`);
       
-      console.log(`\n📊 CACHE STATISTICS: ${globalCacheStats.hits} hits, ${globalCacheStats.misses} misses (${Math.round((globalCacheStats.hits / globalCacheStats.total) * 100)}% hit rate)`);
       console.log(`⏱️ STRATEGIES COMPLETE - Starting results finalization...`);
     } catch (strategyError) {
       console.error('Strategy calculation failed:', strategyError);
@@ -1006,12 +698,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     // Cache permanently since all analysis is limited to historical data (through Jan 1 current year)
     console.log(`   💾 Caching results permanently (all data is historical)...`);
-    if (!bypass_cache) {
-      await cache.set(cacheKey, results); // No expiration - permanent cache
-      console.log(`   ✅ Results cached successfully`);
-    } else {
-      console.log(`   ⚠️ Cache bypassed - results not saved`);
-    }
+    await cache.set(cacheKey, results); // No expiration - permanent cache
+    console.log(`   ✅ Results cached successfully`);
 
     console.log(`\n🚀 SENDING RESPONSE TO FRONTEND...`);
     console.log(`📦 Final package size: ${Object.keys(results).length} main sections`);
@@ -1020,14 +708,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(200).json({ 
       ...results, 
       from_cache: false,
-      timings: overallTimings,
-      cacheStats: globalCacheStats
+      timings: overallTimings
     });
   } catch (error: any) {
-    console.error('Backtest error:', error);
-    res.status(500).json({ 
-      error: 'Backtest failed', 
-      message: error.message 
-    });
+    return handleApiError(res, error, 'Backtest operation');
   }
 }

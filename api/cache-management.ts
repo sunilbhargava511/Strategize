@@ -247,48 +247,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           message: `Cleared ${deletedCount} cached analyses`
         });
 
-      } else if (action === 'clear_market_data') {
-        // Advanced: Clear EODHD market data cache
-        if (confirmationCode !== 'CLEAR_MARKET_DATA') {
-          return res.status(400).json({
-            error: 'Invalid confirmation code. This is a protected operation.'
-          });
-        }
-
-        console.log('🚨 ADVANCED: Clearing all EODHD market data cache...');
-        
-        // Get all market data cache keys
-        const [priceKeys, marketCapKeys, sharesKeys] = await Promise.all([
-          cache.keys('price:*'),
-          cache.keys('market-cap:*'), 
-          cache.keys('shares:*')
-        ]);
-        
-        const allMarketDataKeys = [...priceKeys, ...marketCapKeys, ...sharesKeys];
-        
-        if (allMarketDataKeys.length === 0) {
-          return res.status(200).json({
-            success: true,
-            deletedCount: 0,
-            message: 'No market data cache to clear'
-          });
-        }
-
-        const deletedCount = await cache.mdel(allMarketDataKeys);
-        
-        console.log(`✅ Successfully cleared ${deletedCount} market data cache entries`);
-        
-        return res.status(200).json({
-          success: true,
-          deletedCount,
-          message: `Cleared ${deletedCount} market data cache entries (prices, market caps, shares)`,
-          breakdown: {
-            prices: priceKeys.length,
-            marketCaps: marketCapKeys.length, 
-            shares: sharesKeys.length
-          }
-        });
-
       } else if (action === 'clear_everything') {
         // Nuclear option: Clear everything
         if (confirmationCode !== 'NUCLEAR_CLEAR_EVERYTHING') {
@@ -348,48 +306,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }
 
-      } else if (action === 'clear_old_cache') {
-        // Clear old individual key cache structure (adjusted-price:*, market-cap:*, shares-outstanding:*)
-        if (confirmationCode !== 'CLEAR_OLD_CACHE') {
-          return res.status(400).json({
-            error: 'Invalid confirmation code. This is a protected operation.'
-          });
-        }
-
-        console.log('🧹 MIGRATION: Clearing old individual-key cache structure...');
-        
-        // Get all old-format keys
-        const [oldPriceKeys, oldMarketCapKeys, oldSharesKeys] = await Promise.all([
-          cache.keys('adjusted-price:*').catch(() => []),
-          cache.keys('market-cap:*').catch(() => []),
-          cache.keys('shares-outstanding:*').catch(() => [])
-        ]);
-        
-        const allOldKeys = [...oldPriceKeys, ...oldMarketCapKeys, ...oldSharesKeys];
-        
-        if (allOldKeys.length === 0) {
-          return res.status(200).json({
-            success: true,
-            deletedCount: 0,
-            message: 'No old cache entries found'
-          });
-        }
-
-        const deletedCount = await cache.mdel(allOldKeys);
-        
-        console.log(`✅ Successfully cleared ${deletedCount} old cache entries`);
-        
-        return res.status(200).json({
-          success: true,
-          deletedCount,
-          message: `Cleared ${deletedCount} old cache entries (adjusted-price, market-cap, shares-outstanding)`,
-          breakdown: {
-            priceKeys: oldPriceKeys.length,
-            marketCapKeys: oldMarketCapKeys.length,
-            sharesKeys: oldSharesKeys.length
-          }
-        });
-
       } else if (action === 'clear_by_ticker') {
         // Clear all data for specific tickers
         if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
@@ -408,17 +324,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         let allTickerKeys: string[] = [];
         
-        // For each ticker, find all related cache keys
+        // For each ticker, find all related cache keys in the new architecture
         for (const ticker of tickers) {
           const tickerPattern = ticker.toUpperCase();
-          const [priceKeys, marketCapKeys, sharesKeys, backtestKeys] = await Promise.all([
-            cache.keys(`price:${tickerPattern}:*`),
-            cache.keys(`market-cap:${tickerPattern}:*`),
-            cache.keys(`shares:${tickerPattern}:*`),
+          const [tickerDataKeys, backtestKeys] = await Promise.all([
+            cache.keys(`ticker-data:${tickerPattern}`), // New ticker-data keys
             cache.keys(`backtest:*${tickerPattern}*`) // Analysis results containing this ticker
           ]);
           
-          allTickerKeys.push(...priceKeys, ...marketCapKeys, ...sharesKeys, ...backtestKeys);
+          allTickerKeys.push(...tickerDataKeys, ...backtestKeys);
         }
         
         if (allTickerKeys.length === 0) {
@@ -441,7 +355,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       } else {
         return res.status(400).json({
-          error: 'Invalid action. Supported actions: clear_all, clear_market_data, clear_everything, clear_by_ticker'
+          error: 'Invalid action. Supported actions: clear_all, clear_everything, clear_by_ticker'
         });
       }
 

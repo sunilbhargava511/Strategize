@@ -51,9 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       token: process.env.KV_REST_API_TOKEN,
     });
 
-    // Get all market cap keys
-    const marketCapKeys = await redis.keys('market-cap:*');
-    console.log(`Found ${marketCapKeys.length} market-cap entries`);
+    // Get all ticker data keys  
+    const tickerDataKeys = await redis.keys('ticker-data:*');
+    console.log(`Found ${tickerDataKeys.length} ticker-data entries`);
 
     // Organize data by year and ticker
     const dataByYear: { [year: string]: YearlyData } = {};
@@ -61,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const allTickers = new Set<string>();
 
     // Fetch and organize data
-    for (const key of marketCapKeys) {
+    for (const key of tickerDataKeys) {
       try {
         const value = await redis.get(key) as any;
         if (value) {
@@ -128,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       [''],
       ['Export Date:', new Date().toLocaleString()],
       ['Total Tickers:', sortedTickers.length.toString()],
-      ['Total Cache Entries:', marketCapKeys.length.toString()],
+      ['Total Cache Entries:', tickerDataKeys.length.toString()],
       ['Year Range:', years.length > 0 ? `${Math.min(...years)} - ${Math.max(...years)}` : 'N/A'],
       [''],
       ['Note:', 'This export contains only cached market data from EODHD API calls.'],

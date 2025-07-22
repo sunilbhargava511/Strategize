@@ -30,26 +30,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     // Get all keys (with pattern matching for safety)
-    const marketCapKeys = await redis.keys('market-cap:*');
+    const tickerDataKeys = await redis.keys('ticker-data:*');
     const backtestKeys = await redis.keys('backtest:*');
     
-    console.log(`Found ${marketCapKeys.length} market-cap entries and ${backtestKeys.length} backtest entries`);
+    console.log(`Found ${tickerDataKeys.length} ticker-data entries and ${backtestKeys.length} backtest entries`);
 
-    // Fetch all market cap data
-    const marketCapData: any[] = [];
-    for (const key of marketCapKeys.slice(0, 1000)) { // Limit to 1000 to avoid timeout
+    // Fetch all ticker data
+    const tickerData: any[] = [];
+    for (const key of tickerDataKeys.slice(0, 1000)) { // Limit to 1000 to avoid timeout
       try {
         const value = await redis.get(key);
         if (value) {
-          // Parse key to extract ticker and date
+          // Parse key to extract ticker
           const parts = key.split(':');
-          if (parts.length >= 3) {
-            marketCapData.push({
-              key,
-              ticker: parts[1],
-              date: parts[2],
-              data: value
-            });
+          if (parts.length >= 2) {
+            const ticker = parts[1];
+            // Flatten the yearly data for CSV export
+            for (const [year, yearData] of Object.entries(value as any)) {
+              tickerData.push({
+                key,
+                ticker,
+                year,
+                data: yearData
+              });
+            }
           }
         }
       } catch (err) {
@@ -57,22 +61,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Create CSV content
-    let csv = 'Ticker,Date,Price,Adjusted Close,Open,High,Low,Volume\n';
+    // Create CSV content for new ticker-based structure
+    let csv = 'Ticker,Year,Price,Market Cap,Shares Outstanding\n';
     
-    marketCapData.forEach(item => {
+    tickerData.forEach(item => {
       const data = item.data;
-      csv += `${item.ticker},${item.date},${data.price || ''},${data.adjusted_close || ''},${data.open || ''},${data.high || ''},${data.low || ''},${data.volume || ''}\n`;
+      csv += `${item.ticker},${item.year},${data.price || ''},${data.market_cap || ''},${data.shares_outstanding || ''}\n`;
     });
 
     // Add summary section
     csv += '\n\nCache Summary\n';
-    csv += `Total Market Cap Entries,${marketCapKeys.length}\n`;
+    csv += `Total Ticker Data Entries,${tickerDataKeys.length}\n`;
+    csv += `Total Data Points,${tickerData.length}\n`;
     csv += `Total Backtest Entries,${backtestKeys.length}\n`;
     csv += `Export Date,${new Date().toISOString()}\n`;
     
-    if (marketCapKeys.length > 1000) {
-      csv += `\nNote: Export limited to first 1000 entries. Total entries: ${marketCapKeys.length}\n`;
+    if (tickerDataKeys.length > 1000) {
+      csv += `\nNote: Export limited to first 1000 ticker entries. Total ticker entries: ${tickerDataKeys.length}\n`;
     }
 
     // Set headers for file download
