@@ -32,6 +32,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Check if EODHD API token is available for fill operations
+    if (action === 'fill' && !process.env.EODHD_API_TOKEN) {
+      return res.status(500).json({
+        error: 'EODHD API token not configured',
+        message: 'EODHD_API_TOKEN environment variable is required for fill operations'
+      });
+    }
+
     if (action === 'validate') {
       // Check which tickers are already cached using the shared function
       console.log(`🔍 VALIDATE CACHE: Checking ${tickers.length} tickers`);
@@ -103,9 +111,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error('Fill cache error:', error);
+    console.error('Error stack:', error.stack);
     return res.status(500).json({
       error: 'Fill cache operation failed',
-      message: error.message
+      message: error.message || 'Unknown error occurred',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
