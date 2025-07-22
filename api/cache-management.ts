@@ -1,7 +1,7 @@
 // api/cache-management.ts
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
-import { getFailedTickers } from './cache/cacheOperations';
+import { getFailedTickers, removeFailedTicker } from './cache/cacheOperations';
 
 interface CachedAnalysis {
   key: string;
@@ -237,7 +237,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     } else if (req.method === 'POST') {
       // Advanced cache operations
-      const { action, tickers, confirmationCode } = req.body;
+      const { action, tickers, confirmationCode, ticker } = req.body;
       
       if (action === 'clear_all') {
         console.log('🗑️ Clearing all cached analysis results...');
@@ -367,9 +367,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           message: `Cleared ${deletedCount} cache entries for tickers: ${tickers.join(', ')}`
         });
 
+      } else if (action === 'remove_failed_ticker') {
+        // Remove a ticker from the failed tickers list
+        if (!ticker || typeof ticker !== 'string') {
+          return res.status(400).json({
+            error: 'Missing ticker for failed ticker removal'
+          });
+        }
+
+        console.log(`🔧 Removing failed ticker: ${ticker}`);
+        
+        try {
+          await removeFailedTicker(ticker);
+          
+          console.log(`✅ Successfully removed failed ticker: ${ticker}`);
+          
+          return res.status(200).json({
+            success: true,
+            message: `Removed ${ticker} from failed tickers list. You can now try to cache it again.`,
+            ticker
+          });
+        } catch (error: any) {
+          console.error(`Error removing failed ticker ${ticker}:`, error);
+          return res.status(500).json({
+            error: 'Failed to remove failed ticker',
+            message: error.message,
+            ticker
+          });
+        }
+
       } else {
         return res.status(400).json({
-          error: 'Invalid action. Supported actions: clear_all, clear_everything, clear_by_ticker'
+          error: 'Invalid action. Supported actions: clear_all, clear_everything, clear_by_ticker, remove_failed_ticker'
         });
       }
 

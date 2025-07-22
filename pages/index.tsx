@@ -25,6 +25,18 @@ export default function Home() {
   const [showCacheManagement, setShowCacheManagement] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Cache filling states
+  const [fillCacheInput, setFillCacheInput] = useState('')
+  const [fillCacheLoading, setFillCacheLoading] = useState(false)
+  const [fillCacheProgress, setFillCacheProgress] = useState<{
+    processed: number;
+    total: number;
+    percentage: number;
+    currentTicker?: string;
+    successful: number;
+    failed: number;
+  } | null>(null)
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
     console.log('Loading cached analysis:', cachedAnalysis)
@@ -149,6 +161,162 @@ export default function Home() {
     link.click()
     document.body.removeChild(link)
     URL.revokeObjectURL(url)
+  }
+
+  // Cache filling functions
+  const validateFillCache = async () => {
+    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    if (tickers.length === 0) {
+      alert('Please enter ticker symbols')
+      return
+    }
+
+    setFillCacheLoading(true)
+    try {
+      const response = await fetch('/api/fill-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'validate',
+          tickers
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const cachedCount = data.cached?.length || 0
+        const missingCount = data.missing?.length || 0
+        const cachedList = data.cached?.join(', ') || 'None'
+        const missingList = data.missing?.join(', ') || 'None'
+        
+        const summary = `Cache Status for ${tickers.length} tickers:\n\n✅ Already Cached: ${cachedCount}\n❌ Missing: ${missingCount}\n\nCached: ${cachedList}\nMissing: ${missingList}`
+        alert(summary)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Validation failed')
+      }
+    } catch (error: any) {
+      alert(`Failed to validate cache: ${error.message}`)
+      console.error('Validate cache error:', error)
+    } finally {
+      setFillCacheLoading(false)
+    }
+  }
+
+  const fillCacheData = async () => {
+    const tickers = fillCacheInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t)
+    if (tickers.length === 0) {
+      alert('Please enter ticker symbols')
+      return
+    }
+
+    const estimatedTime = Math.ceil(tickers.length / 10)
+    if (!confirm(`Fill cache for ${tickers.length} tickers?\n\nThis will fetch historical data from EODHD API.\nEstimated time: ~${estimatedTime} minutes\n\nContinue?`)) {
+      return
+    }
+
+    setFillCacheLoading(true)
+    setFillCacheProgress({
+      processed: 0,
+      total: tickers.length,
+      percentage: 0,
+      successful: 0,
+      failed: 0
+    })
+
+    // Start progress simulation
+    const progressInterval = setInterval(() => {
+      setFillCacheProgress(prev => {
+        if (!prev) return null
+        
+        // Estimate progress based on time elapsed (rough approximation)
+        const newProcessed = Math.min(prev.processed + 1, prev.total - 1)
+        const newPercentage = (newProcessed / prev.total) * 100
+        
+        return {
+          ...prev,
+          processed: newProcessed,
+          percentage: newPercentage
+        }
+      })
+    }, (estimatedTime * 60 * 1000) / tickers.length) // Distribute progress over estimated time
+    
+    try {
+      const response = await fetch('/api/fill-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'fill',
+          tickers
+        })
+      })
+
+      // Clear progress simulation
+      clearInterval(progressInterval)
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          const successCount = data.results?.successful?.length || data.results?.success?.length || 0
+          const errorCount = data.results?.errors?.length || 0
+          const warningCount = data.results?.warnings?.length || 0
+          
+          // Update final progress
+          setFillCacheProgress({
+            processed: tickers.length,
+            total: tickers.length,
+            percentage: 100,
+            successful: successCount,
+            failed: errorCount
+          })
+          
+          // Show progress for a moment before showing results
+          setTimeout(() => {
+            const successList = data.results?.successful?.join(', ') || data.results?.success?.join(', ') || 'None'
+            const errorList = data.results?.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
+            
+            alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
+            setFillCacheInput('')
+            setFillCacheProgress(null) // Clear progress
+          }, 1500)
+        } else {
+          alert(`Cache fill failed: ${data.message}`)
+        }
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Fill cache failed')
+      }
+    } catch (error: any) {
+      clearInterval(progressInterval)
+      alert(`Failed to fill cache: ${error.message}`)
+      console.error('Fill cache error:', error)
+      setFillCacheProgress(null)
+    } finally {
+      setFillCacheLoading(false)
+    }
+  }
+
+  const clearFailedTicker = async (ticker: string) => {
+    try {
+      const response = await fetch('/api/cache-management', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          action: 'remove_failed_ticker',
+          ticker
+        })
+      })
+
+      if (response.ok) {
+        alert(`Successfully removed ${ticker} from failed tickers list. You can now try to cache it again.`)
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to remove failed ticker')
+      }
+    } catch (error: any) {
+      alert(`Failed to remove failed ticker: ${error.message}`)
+      console.error('Remove failed ticker error:', error)
+    }
   }
 
   const handleRunAnalysis = async () => {
@@ -509,6 +677,145 @@ export default function Home() {
                           <span className="text-sm">Clear Cache</span>
                         </button>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cache Management Card */}
+              <div className="bg-white rounded-2xl shadow-sm p-6">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                    </svg>
+                  </div>
+                  <h2 className="text-xl font-semibold text-gray-900">Cache Management</h2>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7" />
+                      </svg>
+                      <span>Fill Cache with Historical Data</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Pre-populate cache with EODHD API data for faster analysis
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <input
+                        type="text"
+                        value={fillCacheInput}
+                        onChange={(e) => setFillCacheInput(e.target.value)}
+                        placeholder="Enter tickers: AAPL, MSFT, GOOGL"
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      />
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={validateFillCache}
+                          disabled={fillCacheLoading || !fillCacheInput.trim()}
+                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 disabled:bg-gray-100 text-blue-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Validate</span>
+                        </button>
+                        <button
+                          onClick={fillCacheData}
+                          disabled={fillCacheLoading || !fillCacheInput.trim()}
+                          className="flex items-center justify-center space-x-2 px-4 py-2 bg-green-50 hover:bg-green-100 disabled:bg-gray-100 text-green-700 disabled:text-gray-400 rounded-lg transition-colors text-sm font-medium"
+                        >
+                          {fillCacheLoading ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                              <span>Filling...</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              <span>Fill Cache</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      
+                      {/* Progress Display */}
+                      {fillCacheProgress && (
+                        <div className="mt-3 space-y-2">
+                          <div className="flex justify-between text-xs text-gray-600">
+                            <span>Processing tickers...</span>
+                            <span>{fillCacheProgress.processed}/{fillCacheProgress.total} ({fillCacheProgress.percentage.toFixed(1)}%)</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                                 style={{ width: `${fillCacheProgress.percentage}%` }} />
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-green-600">✅ Success: {fillCacheProgress.successful}</span>
+                            <span className="text-red-600">❌ Failed: {fillCacheProgress.failed}</span>
+                          </div>
+                          {fillCacheProgress.currentTicker && (
+                            <div className="text-xs text-gray-500">
+                              Currently processing: <span className="font-medium">{fillCacheProgress.currentTicker}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Remove Failed Tickers Section */}
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>Remove Failed Ticker</span>
+                    </label>
+                    <p className="text-xs text-gray-500 mb-3">
+                      Remove a ticker from the failed list to retry caching
+                    </p>
+                    
+                    <div className="flex space-x-3">
+                      <input
+                        type="text"
+                        placeholder="e.g., CRWD"
+                        className="flex-1 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const ticker = (e.target as HTMLInputElement).value.trim().toUpperCase()
+                            if (ticker) {
+                              clearFailedTicker(ticker)
+                              ;(e.target as HTMLInputElement).value = ''
+                            }
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => {
+                          const input = document.querySelector('input[placeholder="e.g., CRWD"]') as HTMLInputElement
+                          const ticker = input?.value.trim().toUpperCase()
+                          if (ticker) {
+                            clearFailedTicker(ticker)
+                            input.value = ''
+                          } else {
+                            alert('Please enter a ticker symbol')
+                          }
+                        }}
+                        className="flex items-center justify-center space-x-2 px-4 py-2 bg-orange-50 hover:bg-orange-100 text-orange-700 rounded-lg transition-colors text-sm font-medium"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Remove</span>
+                      </button>
                     </div>
                   </div>
                 </div>
