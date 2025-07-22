@@ -337,7 +337,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               deletedCount,
               message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
             });
-          } catch (keysError) {
+          } catch (keysError: any) {
             console.error('Both FLUSHDB and KEYS approaches failed:', keysError);
             return res.status(500).json({
               success: false,
