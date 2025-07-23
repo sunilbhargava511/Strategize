@@ -21,38 +21,70 @@ export function isETF(ticker: string): boolean {
   return etfTickers.has(ticker) || etfTickers.has(`${ticker}.US`);
 }
 
-// Helper function to try fetching price data for a specific date
+// Helper function to try fetching price data for a specific date with delisted support
 export async function tryFetchPriceForDate(ticker: string, date: string, apiToken: string): Promise<EODHDPriceData | null> {
-  const eodUrl = `https://eodhd.com/api/eod/${ticker}?from=${date}&to=${date}&api_token=${apiToken}&fmt=json`;
+  // Try multiple ticker formats to handle delisted stocks
+  const formatsToTry = [
+    ticker, // Original format (might already have .US or .DELISTED)
+    ticker.includes('.') ? ticker : `${ticker}.US`, // Add .US if not present
+    ticker.includes('.DELISTED') ? ticker : `${ticker}.US.DELISTED` // Try delisted format
+  ];
   
-  const response = await fetch(eodUrl);
+  // Remove duplicates
+  const uniqueFormats = [...new Set(formatsToTry)];
   
-  if (!response.ok) {
-    throw new Error(`EODHD API error: ${response.status} ${response.statusText}`);
+  for (const formattedTicker of uniqueFormats) {
+    try {
+      const eodUrl = `https://eodhd.com/api/eod/${formattedTicker}?from=${date}&to=${date}&api_token=${apiToken}&fmt=json`;
+      
+      const response = await fetch(eodUrl);
+      
+      if (!response.ok) {
+        // Don't throw on 404 for delisted tickers, just try next format
+        if (response.status === 404) {
+          logger.debug(`No data found for ${formattedTicker} on ${date} (404)`);
+          continue;
+        }
+        throw new Error(`EODHD API error: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check if we got data
+      if (!data || (Array.isArray(data) && data.length === 0)) {
+        logger.debug(`No data found for ${formattedTicker} on ${date} (empty response)`);
+        continue; // Try next format
+      }
+      
+      // If we got here, we found data!
+      if (formattedTicker !== ticker) {
+        logger.info(`✅ Found delisted data for ${ticker} using format: ${formattedTicker}`);
+      }
+      
+      const dayData = Array.isArray(data) ? data[0] : data;
+      
+      if (!dayData || !dayData.adjusted_close) {
+        continue; // Try next format
+      }
+      
+      return {
+        date: dayData.date,
+        open: dayData.open,
+        high: dayData.high,
+        low: dayData.low,
+        close: dayData.close,
+        adjusted_close: dayData.adjusted_close,
+        volume: dayData.volume
+      };
+      
+    } catch (error) {
+      logger.debug(`Failed to fetch ${formattedTicker}: ${error}`);
+      continue; // Try next format
+    }
   }
   
-  const data = await response.json();
-  
-  // Check if we got data
-  if (!data || (Array.isArray(data) && data.length === 0)) {
-    return null; // No data for this date
-  }
-  
-  const dayData = Array.isArray(data) ? data[0] : data;
-  
-  if (!dayData || !dayData.adjusted_close) {
-    return null;
-  }
-  
-  return {
-    date: dayData.date,
-    open: dayData.open,
-    high: dayData.high,
-    low: dayData.low,
-    close: dayData.close,
-    adjusted_close: dayData.adjusted_close,
-    volume: dayData.volume
-  };
+  // No data found for any format
+  return null;
 }
 
 // Get split-adjusted price with fallback logic
@@ -280,58 +312,82 @@ export async function getMarketCapFromAPI(ticker: string, date: string, bypassCa
       throw createConfigError('EODHD_API_TOKEN not configured');
     }
     
-    // Add .US exchange suffix if not present
-    const tickerWithExchange = ticker.includes('.') ? ticker : `${ticker}.US`;
+    // Try multiple ticker formats to handle delisted stocks
+    const formatsToTry = [
+      ticker, // Original format
+      ticker.includes('.') ? ticker : `${ticker}.US`, // Add .US if not present
+      ticker.includes('.DELISTED') ? ticker : `${ticker}.US.DELISTED` // Try delisted format
+    ];
     
-    logger.debug(`Fetching market cap from EODHD API for ${tickerWithExchange} on ${date}`);
+    // Remove duplicates
+    const uniqueFormats = [...new Set(formatsToTry)];
     
-    // Use EODHD market-capitalization endpoint
-    const marketCapUrl = `https://eodhd.com/api/market-capitalization/${tickerWithExchange}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.EODHD_API);
-    
-    const response = await fetch(marketCapUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      logger.debug(`EODHD market cap API error for ${tickerWithExchange}: ${response.status}`);
-      return null;
+    for (const formattedTicker of uniqueFormats) {
+      try {
+        logger.debug(`Fetching market cap from EODHD API for ${formattedTicker} on ${date}`);
+        
+        // Use EODHD market-capitalization endpoint
+        const marketCapUrl = `https://eodhd.com/api/market-capitalization/${formattedTicker}?from=${date}&to=${date}&api_token=${EOD_API_KEY}&fmt=json`;
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUTS.EODHD_API);
+        
+        const response = await fetch(marketCapUrl, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          if (response.status === 404) {
+            logger.debug(`No market cap data found for ${formattedTicker} on ${date} (404)`);
+            continue; // Try next format
+          }
+          throw new Error(`EODHD API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data || (Array.isArray(data) && data.length === 0)) {
+          logger.debug(`No market cap data from API for ${formattedTicker} on ${date} (empty response)`);
+          continue; // Try next format
+        }
+        
+        // If we got here, we found data!
+        if (formattedTicker !== ticker) {
+          logger.info(`✅ Found delisted market cap data for ${ticker} using format: ${formattedTicker}`);
+        }
+        
+        const dayData = Array.isArray(data) ? data[0] : data;
+        
+        // Check both possible field names for market cap
+        const marketCapValue = dayData.MarketCapitalization || dayData.market_cap;
+        if (dayData && marketCapValue) {
+          const marketCap = marketCapValue;
+          
+          // Cache the result
+          try {
+            await cache.set(cacheKey, {
+              ticker,
+              date,
+              market_cap: marketCap,
+              format_used: formattedTicker,
+              cached_at: new Date().toISOString()
+            });
+            logger.success(`Cached API market cap for ${ticker} ${date}: $${(marketCap / 1000000000).toFixed(2)}B`);
+          } catch (cacheError) {
+            logger.warn(`Failed to cache API market cap for ${ticker} ${date}`, cacheError);
+          }
+          
+          return marketCap;
+        }
+        
+      } catch (error) {
+        logger.debug(`Failed to fetch market cap for ${formattedTicker}: ${error}`);
+        continue; // Try next format
+      }
     }
     
-    const data = await response.json();
-    
-    if (!data || (Array.isArray(data) && data.length === 0)) {
-      logger.debug(`No market cap data from API for ${tickerWithExchange} on ${date}`);
-      return null;
-    }
-    
-    // Get the first record (should be the requested date or closest available)
-    const dayData = Array.isArray(data) ? data[0] : data;
-    
-    if (!dayData || !dayData.MarketCapitalization) {
-      logger.debug(`No MarketCapitalization field in API response for ${tickerWithExchange}`);
-      return null;
-    }
-    
-    const marketCap = dayData.MarketCapitalization;
-    
-    // Cache the result
-    try {
-      await cache.set(cacheKey, {
-        ticker,
-        date: dayData.Date || date,
-        market_cap: marketCap,
-        source: 'eodhd_market_cap_api',
-        cached_at: new Date().toISOString()
-      });
-      logger.debug(`Cached API market cap for ${ticker} ${date}: $${(marketCap / 1000000000).toFixed(2)}B`);
-    } catch (cacheError) {
-      logger.warn(`Failed to cache API market cap for ${ticker} ${date}`, cacheError);
-    }
-    
-    logger.success(`Got market cap from API for ${ticker} ${date}: $${(marketCap / 1000000000).toFixed(2)}B`);
-    return marketCap;
+    // No data found for any format
+    logger.debug(`No market cap data found for ${ticker} on ${date} (tried all formats)`);
+    return null;
     
   } catch (error) {
     logger.debug(`Error getting market cap from API for ${ticker} on ${date}: ${error}`);
