@@ -3,24 +3,6 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
 import { getFailedTickers, removeFailedTicker } from './cache/cacheOperations';
 
-// Helper function to calculate total data points from tickers
-async function calculateTotalDataPoints(tickers: string[]): Promise<number> {
-  let totalDataPoints = 0;
-  
-  for (const ticker of tickers) {
-    try {
-      const tickerData = await cache.get(`ticker-data:${ticker}`);
-      if (tickerData && typeof tickerData === 'object') {
-        const yearCount = Object.keys(tickerData).length;
-        totalDataPoints += yearCount;
-      }
-    } catch (error) {
-      console.warn(`Error reading data for ${ticker}:`, error);
-    }
-  }
-  
-  return totalDataPoints;
-}
 
 interface CachedAnalysis {
   key: string;
@@ -87,9 +69,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       
       const backtestKeys = Array.from(cacheStats.backtestKeys);
       const uniqueTickers = cacheStats.tickers;
-      const totalDataPoints = await calculateTotalDataPoints(Array.from(uniqueTickers));
       
-      console.log(`Found ${backtestKeys.length} cached analysis results and ${uniqueTickers.size} unique tickers with ${totalDataPoints} total data points from stats`);
+      console.log(`Found ${backtestKeys.length} cached analysis results and ${uniqueTickers.size} unique tickers from stats`);
       
       // Get failed ticker data
       const failedTickers = await getFailedTickers();
@@ -108,9 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           cacheStatistics: {
             uniqueTickers: uniqueTickers.size,
             tickersList: Array.from(uniqueTickers).sort(),
-            totalYearDataPoints: totalDataPoints,
             cacheStructure: 'ticker-based',
-            averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0,
             failedTickers: failedTickersList,
             failedTickersCount: failedTickersList.length
           }
@@ -180,9 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         cacheStatistics: {
           uniqueTickers: uniqueTickers.size,
           tickersList: Array.from(uniqueTickers).sort(),
-          totalYearDataPoints: totalDataPoints,
           cacheStructure: 'ticker-based',
-          averageYearsPerTicker: uniqueTickers.size > 0 ? Math.round(totalDataPoints / uniqueTickers.size) : 0,
           failedTickers: failedTickersList,
           failedTickersCount: failedTickersList.length
         }

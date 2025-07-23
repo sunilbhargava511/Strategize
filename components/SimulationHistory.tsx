@@ -31,7 +31,7 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
       setLoading(true)
       setError(null)
       
-      const response = await fetch('/api/cache-management')
+      const response = await fetch('/api/simulation-history')
       if (!response.ok) {
         throw new Error('Failed to fetch simulation history')
       }
@@ -48,7 +48,7 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
 
   const handleRename = async (key: string, newName: string) => {
     try {
-      const response = await fetch('/api/cache-management', {
+      const response = await fetch('/api/simulation-history', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, customName: newName })
@@ -78,7 +78,7 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
     }
 
     try {
-      const response = await fetch('/api/cache-management', {
+      const response = await fetch('/api/simulation-history', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ keys })

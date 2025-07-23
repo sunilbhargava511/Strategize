@@ -884,14 +884,6 @@ export default function Home() {
                           <span className="ml-2 font-semibold text-gray-900">{cacheStats.cacheStructure || 'Unknown'}</span>
                         </div>
                         <div>
-                          <span className="text-gray-600">Data Points:</span>
-                          <span className="ml-2 font-semibold text-green-600">{cacheStats.totalYearDataPoints || 0} year records</span>
-                        </div>
-                        <div>
-                          <span className="text-gray-600">Avg Years/Ticker:</span>
-                          <span className="ml-2 font-semibold text-purple-600">{cacheStats.averageYearsPerTicker || 0} years</span>
-                        </div>
-                        <div>
                           <span className="text-gray-600">Failed Tickers:</span>
                           <span className={`ml-2 font-semibold ${(cacheStats.failedTickersCount || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>{cacheStats.failedTickersCount || 0}</span>
                         </div>
