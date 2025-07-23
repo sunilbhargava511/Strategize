@@ -42,6 +42,24 @@ export default function Home() {
   const [viewTickerInput, setViewTickerInput] = useState('')
   const [viewTickerData, setViewTickerData] = useState<any>(null)
   const [viewTickerLoading, setViewTickerLoading] = useState(false)
+  
+  // Simulation name state
+  const [simulationName, setSimulationName] = useState('')
+  const [isEditingSimulationName, setIsEditingSimulationName] = useState(false)
+
+  // Generate default simulation name based on configuration
+  const generateDefaultSimulationName = () => {
+    const tickerCount = detectedTickers.length
+    const description = tickerCount <= 5 ? detectedTickers.join(', ') : `${tickerCount} tickers`
+    return `${description} ${configuration.startYear}-${configuration.endYear}`
+  }
+
+  // Update simulation name when configuration changes (if not manually edited)
+  useEffect(() => {
+    if (!simulationName || simulationName === generateDefaultSimulationName()) {
+      setSimulationName(generateDefaultSimulationName())
+    }
+  }, [detectedTickers, configuration.startYear, configuration.endYear])
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
     console.log('Loading cached analysis:', cachedAnalysis)
@@ -1280,9 +1298,39 @@ export default function Home() {
                   <div className="w-full space-y-4">
                     {/* Export Controls */}
                     <div className="flex items-center justify-between pb-4 border-b border-gray-200">
-                      <h3 className="text-xl font-semibold text-gray-900">
-                        Analysis Results {leftPanelCollapsed && <span className="text-sm font-normal text-gray-500">(Full Screen)</span>}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xl font-semibold text-gray-900">
+                          Analysis Results
+                        </h3>
+                        {isEditingSimulationName ? (
+                          <input
+                            type="text"
+                            value={simulationName}
+                            onChange={(e) => setSimulationName(e.target.value)}
+                            onBlur={() => setIsEditingSimulationName(false)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                setIsEditingSimulationName(false)
+                              }
+                              if (e.key === 'Escape') {
+                                setSimulationName(generateDefaultSimulationName())
+                                setIsEditingSimulationName(false)
+                              }
+                            }}
+                            className="text-lg font-medium text-gray-600 bg-gray-50 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            autoFocus
+                          />
+                        ) : (
+                          <button
+                            onClick={() => setIsEditingSimulationName(true)}
+                            className="text-lg font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-50 rounded px-2 py-1 transition-colors"
+                            title="Click to edit simulation name"
+                          >
+                            ({simulationName})
+                          </button>
+                        )}
+                        {leftPanelCollapsed && <span className="text-sm font-normal text-gray-500">(Full Screen)</span>}
+                      </div>
                       <div className="flex items-center space-x-3">
                         <button
                           onClick={handleExportResults}
@@ -1313,7 +1361,7 @@ export default function Home() {
                       </div>
                     </div>
                     
-                    <ResultsDisplay results={results} />
+                    <ResultsDisplay results={results} simulationName={simulationName} />
                   </div>
                 )}
               </div>

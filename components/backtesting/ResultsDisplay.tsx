@@ -3,9 +3,10 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Responsi
 
 interface ResultsDisplayProps {
   results: any
+  simulationName?: string
 }
 
-export default function ResultsDisplay({ results }: ResultsDisplayProps) {
+export default function ResultsDisplay({ results, simulationName }: ResultsDisplayProps) {
   const [activeTab, setActiveTab] = useState('overview')
   const [sortBy, setSortBy] = useState<'ticker' | 'gains'>('gains')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
@@ -754,7 +755,7 @@ export default function ResultsDisplay({ results }: ResultsDisplayProps) {
       <div className="flex items-center space-x-2 mb-6">
         <span className="text-2xl">📊</span>
         <h2 className="text-2xl font-semibold text-primary-900">
-          Analysis Results
+          Analysis Results {simulationName && <span className="text-lg font-medium text-gray-600">({simulationName})</span>}
         </h2>
       </div>
 
