@@ -23,6 +23,7 @@ export default function SharePage() {
   const fetchSharedAnalysis = async (shareId: string) => {
     try {
       setLoading(true)
+      console.log('Fetching shared analysis with ID:', shareId)
       const response = await fetch(`/api/share/${shareId}`)
       
       if (!response.ok) {

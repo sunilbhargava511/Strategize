@@ -33,12 +33,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const cacheKey = `shared_analysis:${shareId}`;
     await cache.set(cacheKey, shareData, 604800);
 
+    const baseUrl = req.headers.host?.includes('localhost') ? 'http://' + req.headers.host : 'https://' + req.headers.host;
+    const shareUrl = `${baseUrl}/share/${shareId}`;
+    
     logger.info(`Created shared analysis: ${shareId} - "${simulationName}"`);
+    logger.info(`Share URL: ${shareUrl}`);
     
     return res.status(200).json({
       success: true,
       shareId,
-      shareUrl: `${process.env.VERCEL_URL ? 'https://' + process.env.VERCEL_URL : 'http://localhost:3000'}/share/${shareId}`,
+      shareUrl,
       expiresIn: '7 days'
     });
     

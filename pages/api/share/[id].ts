@@ -17,8 +17,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
+    logger.info(`Fetching shared analysis: ${id}`);
+    
     // Get shared analysis from cache
     const cacheKey = `shared_analysis:${id}`;
+    logger.info(`Cache key: ${cacheKey}`);
     const sharedData = await cache.get(cacheKey);
 
     if (!sharedData) {
