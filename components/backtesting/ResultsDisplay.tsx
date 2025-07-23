@@ -707,7 +707,9 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
         {data.yearlyHoldings && Object.keys(data.yearlyHoldings).length > 0 && (
           <div className="bg-gray-50 rounded-lg p-6">
             <div className="flex items-center justify-between mb-4">
-              <h4 className="font-semibold text-gray-900">Yearly Holdings Breakdown</h4>
+              <h4 className="font-semibold text-gray-900">
+                Yearly Holdings Breakdown - Final Value: {formatCurrency(data.finalValue)}
+              </h4>
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-600">Sort by:</span>
                 <button
