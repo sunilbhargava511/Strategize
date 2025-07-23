@@ -109,6 +109,18 @@ export const cache = {
       console.error('Cache flushdb error:', error);
       return false;
     }
+  },
+
+  // Scan keys iteratively (for large datasets)
+  scan: async (cursor: number, options?: { count?: number }): Promise<[number, string[]]> => {
+    if (!redis) return [0, []];
+    try {
+      const result = await redis.scan(cursor, { count: options?.count || 100 });
+      return [result[0], result[1]];
+    } catch (error) {
+      console.error('Cache scan error:', error);
+      return [0, []];
+    }
   }
 };
 
