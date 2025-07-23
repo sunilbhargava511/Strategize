@@ -31,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // Store in cache with 7-day expiration (604800 seconds)
     const cacheKey = `shared_analysis:${shareId}`;
-    await cache.set(cacheKey, shareData, { ex: 604800 });
+    await cache.set(cacheKey, shareData, 604800);
 
     logger.info(`Created shared analysis: ${shareId} - "${simulationName}"`);
     
