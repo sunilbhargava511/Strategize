@@ -12,6 +12,7 @@ interface CachedAnalysis {
   isPermanent: boolean
   size?: number
   customName?: string
+  cachedData?: any
 }
 
 interface SimulationHistoryProps {
