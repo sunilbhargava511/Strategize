@@ -32,6 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // Store in cache with 7-day expiration (604800 seconds)
     const cacheKey = `shared_analysis:${shareId}`;
     await cache.set(cacheKey, shareData, 604800);
+    
+    // Update cache stats
+    const { addShareToStats } = await import('../../../api/_cacheStats');
+    await addShareToStats(cacheKey);
 
     const baseUrl = req.headers.host?.includes('localhost') ? 'http://' + req.headers.host : 'https://' + req.headers.host;
     const shareUrl = `${baseUrl}/share/${shareId}`;

@@ -3,6 +3,25 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { cache } from './_upstashCache';
 import { getFailedTickers, removeFailedTicker } from './cache/cacheOperations';
 
+// Helper function to calculate total data points from tickers
+async function calculateTotalDataPoints(tickers: string[]): Promise<number> {
+  let totalDataPoints = 0;
+  
+  for (const ticker of tickers) {
+    try {
+      const tickerData = await cache.get(`ticker-data:${ticker}`);
+      if (tickerData && typeof tickerData === 'object') {
+        const yearCount = Object.keys(tickerData).length;
+        totalDataPoints += yearCount;
+      }
+    } catch (error) {
+      console.warn(`Error reading data for ${ticker}:`, error);
+    }
+  }
+  
+  return totalDataPoints;
+}
+
 interface CachedAnalysis {
   key: string;
   tickers: string[];
@@ -60,52 +79,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // List all cached analysis results
       console.log('📦 Fetching all cached analysis results and ticker statistics...');
       
-      // Get all keys that match the backtest pattern
-      const backtestKeys = await cache.keys('backtest:*');
-      console.log(`Found ${backtestKeys.length} cached analysis results`);
+      // Get cache statistics from stats tracking (no KEYS command needed)
+      console.log('Fetching cached analysis results and ticker statistics from stats tracking...');
       
-      // Get ticker statistics from new ticker-based cache structure
-      console.log('Fetching ticker-based cache statistics...');
+      const { getCacheStats } = await import('./_cacheStats');
+      const cacheStats = await getCacheStats();
       
-      let tickerDataKeys: string[] = [];
-      let uniqueTickers = new Set<string>();
-      let totalDataPoints = 0;
+      const backtestKeys = Array.from(cacheStats.backtestKeys);
+      const uniqueTickers = cacheStats.tickers;
+      const totalDataPoints = await calculateTotalDataPoints(Array.from(uniqueTickers));
       
-      try {
-        // Get all ticker-data keys
-        tickerDataKeys = await cache.keys('ticker-data:*');
-        console.log(`Found ${tickerDataKeys.length} ticker-data keys`);
-        
-        // Extract tickers and count data points
-        for (const key of tickerDataKeys) {
-          const ticker = key.replace('ticker-data:', '');
-          uniqueTickers.add(ticker);
-          
-          // Get the data to count years
-          try {
-            const tickerData = await cache.get(key);
-            if (tickerData && typeof tickerData === 'object') {
-              const yearCount = Object.keys(tickerData).length;
-              totalDataPoints += yearCount; // Each year is one data point with price/market_cap/shares
-            }
-          } catch (dataError) {
-            console.warn(`Error reading data for ${ticker}:`, dataError);
-          }
-        }
-      } catch (keysError) {
-        console.error('Error fetching ticker-data keys:', keysError);
-        // Fallback: try to use SCAN if KEYS fails
-        try {
-          console.log('Attempting to use SCAN for ticker statistics...');
-          // Note: This would require implementing SCAN, for now we'll return empty stats
-          uniqueTickers = new Set();
-          totalDataPoints = 0;
-        } catch (scanError) {
-          console.error('SCAN fallback also failed:', scanError);
-        }
-      }
-      
-      console.log(`Found ${uniqueTickers.size} unique tickers with ${totalDataPoints} total data points`);
+      console.log(`Found ${backtestKeys.length} cached analysis results and ${uniqueTickers.size} unique tickers with ${totalDataPoints} total data points from stats`);
       
       // Get failed ticker data
       const failedTickers = await getFailedTickers();
@@ -242,7 +226,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (action === 'clear_all') {
         console.log('🗑️ Clearing all cached analysis results...');
         
-        const backtestKeys = await cache.keys('backtest:*');
+        const { getCacheStats, saveCacheStats } = await import('./_cacheStats');
+        const cacheStats = await getCacheStats();
+        const backtestKeys = Array.from(cacheStats.backtestKeys);
+        
         if (backtestKeys.length === 0) {
           return res.status(200).json({
             success: true,
@@ -252,6 +239,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         const deletedCount = await cache.mdel(backtestKeys);
+        
+        // Update stats - clear all backtest keys
+        cacheStats.backtestKeys.clear();
+        cacheStats.backtestCount = 0;
+        await saveCacheStats(cacheStats);
         
         console.log(`✅ Successfully cleared ${deletedCount} cached analyses`);
         
@@ -271,27 +263,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log('☢️ NUCLEAR: Clearing ALL cache data...');
         
-        // Use FLUSHDB for nuclear option instead of KEYS + MDEL
-        // This avoids the Redis KEYS command limit
+        // Use FLUSHDB for nuclear option and reset stats
         try {
           const flushed = await cache.flushdb();
           if (flushed) {
-            console.log(`✅ Successfully cleared ALL cache using FLUSHDB`);
+            // Reset cache stats after nuclear clear
+            const { getCacheStats, saveCacheStats } = await import('./_cacheStats');
+            const cacheStats = await getCacheStats();
+            cacheStats.tickers.clear();
+            cacheStats.backtestKeys.clear();
+            cacheStats.shareKeys.clear();
+            cacheStats.tickerCount = 0;
+            cacheStats.backtestCount = 0;
+            cacheStats.shareCount = 0;
+            await saveCacheStats(cacheStats);
+            
+            console.log(`✅ Successfully cleared ALL cache using FLUSHDB and reset stats`);
             
             return res.status(200).json({
               success: true,
               deletedCount: 'ALL',
-              message: `NUCLEAR CLEAR: Deleted ALL cache entries using FLUSHDB`
+              message: `NUCLEAR CLEAR: Deleted ALL cache entries using FLUSHDB and reset stats`
             });
           } else {
             throw new Error('FLUSHDB returned false');
           }
         } catch (flushError) {
-          console.error('FLUSHDB failed, trying KEYS approach:', flushError);
+          console.error('FLUSHDB failed, trying stats-based approach:', flushError);
           
-          // Fallback to KEYS approach with error handling
+          // Fallback to stats-based approach
           try {
-            const allKeys = await cache.keys('*');
+            const { getCacheStats, saveCacheStats } = await import('./_cacheStats');
+            const cacheStats = await getCacheStats();
+            
+            const allKeys = [
+              ...Array.from(cacheStats.tickers).map(ticker => `ticker-data:${ticker}`),
+              ...Array.from(cacheStats.backtestKeys),
+              ...Array.from(cacheStats.shareKeys)
+            ];
             
             if (allKeys.length === 0) {
               return res.status(200).json({
@@ -302,20 +311,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }
 
             const deletedCount = await cache.mdel(allKeys);
-            console.log(`✅ Successfully cleared ALL cache: ${deletedCount} entries`);
+            
+            // Reset stats
+            cacheStats.tickers.clear();
+            cacheStats.backtestKeys.clear();
+            cacheStats.shareKeys.clear();
+            cacheStats.tickerCount = 0;
+            cacheStats.backtestCount = 0;
+            cacheStats.shareCount = 0;
+            await saveCacheStats(cacheStats);
+            
+            console.log(`✅ Successfully cleared ALL cache: ${deletedCount} entries and reset stats`);
             
             return res.status(200).json({
               success: true,
               deletedCount,
-              message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries`
+              message: `NUCLEAR CLEAR: Deleted ALL ${deletedCount} cache entries and reset stats`
             });
-          } catch (keysError: any) {
-            console.error('Both FLUSHDB and KEYS approaches failed:', keysError);
+          } catch (statsError: any) {
+            console.error('Stats-based nuclear clear also failed:', statsError);
             return res.status(500).json({
               success: false,
               error: 'Nuclear clear failed',
               message: 'Unable to clear cache due to Redis limitations. Please contact support.',
-              details: keysError.message
+              details: statsError.message
             });
           }
         }
@@ -336,17 +355,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         console.log(`🗑️ ADVANCED: Clearing cache data for tickers: ${tickers.join(', ')}`);
         
+        const { getCacheStats, saveCacheStats } = await import('./_cacheStats');
+        const cacheStats = await getCacheStats();
+        
         let allTickerKeys: string[] = [];
         
-        // For each ticker, find all related cache keys in the new architecture
+        // For each ticker, find all related cache keys using stats
         for (const ticker of tickers) {
           const tickerPattern = ticker.toUpperCase();
-          const [tickerDataKeys, backtestKeys] = await Promise.all([
-            cache.keys(`ticker-data:${tickerPattern}`), // New ticker-data keys
-            cache.keys(`backtest:*${tickerPattern}*`) // Analysis results containing this ticker
-          ]);
           
-          allTickerKeys.push(...tickerDataKeys, ...backtestKeys);
+          // Check if ticker exists in stats
+          if (cacheStats.tickers.has(tickerPattern)) {
+            allTickerKeys.push(`ticker-data:${tickerPattern}`);
+          }
+          
+          // Find backtest keys containing this ticker
+          for (const backtestKey of cacheStats.backtestKeys) {
+            if (backtestKey.includes(tickerPattern)) {
+              allTickerKeys.push(backtestKey);
+            }
+          }
         }
         
         if (allTickerKeys.length === 0) {
@@ -359,7 +387,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const deletedCount = await cache.mdel(allTickerKeys);
         
-        console.log(`✅ Successfully cleared ${deletedCount} cache entries for ${tickers.length} tickers`);
+        // Update stats - remove deleted keys
+        for (const key of allTickerKeys) {
+          if (key.startsWith('ticker-data:')) {
+            const ticker = key.replace('ticker-data:', '');
+            cacheStats.tickers.delete(ticker);
+          } else if (key.startsWith('backtest:')) {
+            cacheStats.backtestKeys.delete(key);
+          }
+        }
+        
+        cacheStats.tickerCount = cacheStats.tickers.size;
+        cacheStats.backtestCount = cacheStats.backtestKeys.size;
+        await saveCacheStats(cacheStats);
+        
+        console.log(`✅ Successfully cleared ${deletedCount} cache entries for ${tickers.length} tickers and updated stats`);
         
         return res.status(200).json({
           success: true,

@@ -22,6 +22,11 @@ export async function setTickerInCache(ticker: string, data: TickerCacheData): P
   try {
     const cacheKey = `${CACHE_KEYS.TICKER_DATA}:${ticker}`;
     await cache.set(cacheKey, data); // Permanent cache for historical data
+    
+    // Update cache stats
+    const { addTickerToStats } = await import('../_cacheStats');
+    await addTickerToStats(ticker);
+    
     logger.success(`Cached complete data for ${ticker} (${Object.keys(data).length} years)`);
   } catch (error) {
     logger.error(`Error caching ticker ${ticker}`, error);

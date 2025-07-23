@@ -820,6 +820,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Cache permanently since all analysis is limited to historical data (through Jan 1 current year)
     console.log(`   💾 Caching results permanently (all data is historical)...`);
     await cache.set(cacheKey, results); // No expiration - permanent cache
+    
+    // Update cache stats
+    const { addBacktestToStats } = await import('./_cacheStats');
+    await addBacktestToStats(cacheKey);
+    
     console.log(`   ✅ Results cached successfully`);
 
     console.log(`\n🚀 SENDING RESPONSE TO FRONTEND...`);

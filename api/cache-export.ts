@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Redis } from '@upstash/redis';
+import { cache } from './_upstashCache';
+import { logger } from './_logger';
+import { getCacheStats } from './_cacheStats';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -15,36 +17,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const { format = 'json' } = req.query;
+
   try {
-    // Check if Redis is configured
-    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-      return res.status(500).json({ 
-        error: 'Cache not configured',
-        message: 'Redis environment variables not set'
-      });
-    }
-
-    const redis = new Redis({
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
-    });
-
-    // Get all keys (with pattern matching for safety)
-    const tickerDataKeys = await redis.keys('ticker-data:*');
-    const backtestKeys = await redis.keys('backtest:*');
+    logger.info('Starting cache export using stats tracking...');
     
-    console.log(`Found ${tickerDataKeys.length} ticker-data entries and ${backtestKeys.length} backtest entries`);
-
-    // Fetch all ticker data
-    const tickerData: any[] = [];
-    for (const key of tickerDataKeys.slice(0, 1000)) { // Limit to 1000 to avoid timeout
-      try {
-        const value = await redis.get(key);
-        if (value) {
-          // Parse key to extract ticker
-          const parts = key.split(':');
-          if (parts.length >= 2) {
-            const ticker = parts[1];
+    // Get cache stats instead of using KEYS
+    const stats = await getCacheStats();
+    
+    // Collect all keys from stats
+    const allKeys: string[] = [
+      ...Array.from(stats.tickers).map(ticker => `ticker-data:${ticker}`),
+      ...Array.from(stats.backtestKeys),
+      ...Array.from(stats.shareKeys)
+    ];
+    
+    logger.info(`Found ${allKeys.length} cache keys from stats (${stats.tickerCount} tickers, ${stats.backtestCount} backtests, ${stats.shareCount} shares)`);
+    
+    if (format === 'csv') {
+      // CSV export for ticker data
+      const tickerKeys = Array.from(stats.tickers).map(ticker => `ticker-data:${ticker}`);
+      const tickerData: any[] = [];
+      
+      for (const key of tickerKeys.slice(0, 1000)) { // Limit to avoid timeout
+        try {
+          const value = await cache.get(key);
+          if (value) {
+            const ticker = key.replace('ticker-data:', '');
             // Flatten the yearly data for CSV export
             for (const [year, yearData] of Object.entries(value as any)) {
               tickerData.push({
@@ -55,39 +54,93 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               });
             }
           }
+        } catch (err) {
+          logger.error(`Error fetching ${key}:`, err);
         }
-      } catch (err) {
-        console.error(`Error fetching ${key}:`, err);
       }
+
+      // Create CSV content
+      let csv = 'Ticker,Year,Price,Market Cap,Shares Outstanding\n';
+      
+      tickerData.forEach(item => {
+        const data = item.data;
+        csv += `${item.ticker},${item.year},${data.price || ''},${data.market_cap || ''},${data.shares_outstanding || ''}\n`;
+      });
+
+      // Add summary section
+      csv += '\n\nCache Summary\n';
+      csv += `Total Ticker Data Entries,${stats.tickerCount}\n`;
+      csv += `Total Data Points,${tickerData.length}\n`;
+      csv += `Total Backtest Entries,${stats.backtestCount}\n`;
+      csv += `Total Share Entries,${stats.shareCount}\n`;
+      csv += `Export Date,${new Date().toISOString()}\n`;
+      
+      if (stats.tickerCount > 1000) {
+        csv += `\nNote: Export limited to first 1000 ticker entries. Total ticker entries: ${stats.tickerCount}\n`;
+      }
+
+      // Set headers for file download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="cache-export.csv"');
+      
+      return res.status(200).send(csv);
+    } else {
+      // JSON export
+      if (allKeys.length === 0) {
+        return res.status(200).json({
+          success: true,
+          data: {},
+          count: 0,
+          exportedAt: new Date().toISOString(),
+          stats: {
+            tickerCount: stats.tickerCount,
+            backtestCount: stats.backtestCount,
+            shareCount: stats.shareCount
+          }
+        });
+      }
+      
+      // Get all values in batches to avoid memory issues
+      const batchSize = 100;
+      const exportData: Record<string, any> = {};
+      
+      for (let i = 0; i < allKeys.length; i += batchSize) {
+        const batch = allKeys.slice(i, i + batchSize);
+        const values = await cache.mget(batch);
+        
+        batch.forEach((key, index) => {
+          if (values[index] !== null) {
+            exportData[key] = values[index];
+          }
+        });
+        
+        logger.info(`Exported batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(allKeys.length / batchSize)}`);
+      }
+      
+      const exportCount = Object.keys(exportData).length;
+      logger.info(`Cache export completed: ${exportCount} entries`);
+      
+      // Return the export data
+      return res.status(200).json({
+        success: true,
+        data: exportData,
+        count: exportCount,
+        exportedAt: new Date().toISOString(),
+        version: '2.0',
+        stats: {
+          tickerCount: stats.tickerCount,
+          backtestCount: stats.backtestCount,
+          shareCount: stats.shareCount,
+          totalKeys: allKeys.length,
+          exportedKeys: exportCount
+        }
+      });
     }
-
-    // Create CSV content for new ticker-based structure
-    let csv = 'Ticker,Year,Price,Market Cap,Shares Outstanding\n';
     
-    tickerData.forEach(item => {
-      const data = item.data;
-      csv += `${item.ticker},${item.year},${data.price || ''},${data.market_cap || ''},${data.shares_outstanding || ''}\n`;
-    });
-
-    // Add summary section
-    csv += '\n\nCache Summary\n';
-    csv += `Total Ticker Data Entries,${tickerDataKeys.length}\n`;
-    csv += `Total Data Points,${tickerData.length}\n`;
-    csv += `Total Backtest Entries,${backtestKeys.length}\n`;
-    csv += `Export Date,${new Date().toISOString()}\n`;
-    
-    if (tickerDataKeys.length > 1000) {
-      csv += `\nNote: Export limited to first 1000 ticker entries. Total ticker entries: ${tickerDataKeys.length}\n`;
-    }
-
-    // Set headers for file download
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="cache-export.csv"');
-    
-    return res.status(200).send(csv);
   } catch (error: any) {
-    console.error('Cache export error:', error);
+    logger.error('Cache export failed:', error);
     res.status(500).json({ 
+      success: false,
       error: 'Export failed', 
       message: error.message 
     });
