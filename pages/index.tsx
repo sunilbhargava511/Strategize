@@ -734,7 +734,6 @@ export default function Home() {
       <CacheManagement 
         isOpen={showCacheManagement} 
         onClose={() => setShowCacheManagement(false)}
-        onSelectAnalysis={handleLoadCachedAnalysis}
       />
     </>
   )
