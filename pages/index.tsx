@@ -46,6 +46,7 @@ export default function Home() {
   // Simulation name state
   const [simulationName, setSimulationName] = useState('')
   const [isEditingSimulationName, setIsEditingSimulationName] = useState(false)
+  const [isSimulationNameManuallySet, setIsSimulationNameManuallySet] = useState(false)
 
   // Generate default simulation name based on configuration
   const generateDefaultSimulationName = () => {
@@ -54,12 +55,12 @@ export default function Home() {
     return `${description} ${configuration.startYear}-${configuration.endYear}`
   }
 
-  // Update simulation name when configuration changes (if not manually edited)
+  // Update simulation name when configuration changes (only if not manually set)
   useEffect(() => {
-    if (!simulationName || simulationName === generateDefaultSimulationName()) {
+    if (!isSimulationNameManuallySet && (!simulationName || simulationName === generateDefaultSimulationName())) {
       setSimulationName(generateDefaultSimulationName())
     }
-  }, [detectedTickers, configuration.startYear, configuration.endYear])
+  }, [detectedTickers, configuration.startYear, configuration.endYear, isSimulationNameManuallySet])
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
     console.log('Loading cached analysis:', cachedAnalysis)
@@ -78,6 +79,10 @@ export default function Home() {
     // Set simulation name from cached analysis
     if (cachedAnalysis.customName) {
       setSimulationName(cachedAnalysis.customName)
+      setIsSimulationNameManuallySet(true)
+    } else {
+      // Reset to auto-generation if no custom name
+      setIsSimulationNameManuallySet(false)
     }
 
     // If we have the cached data, load it directly into results
@@ -119,6 +124,9 @@ export default function Home() {
       // Store the filename without extension
       const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "")
       setUploadedFileName(fileNameWithoutExt)
+      // Set simulation name to uploaded filename
+      setSimulationName(fileNameWithoutExt)
+      setIsSimulationNameManuallySet(true)
       
       // Handle different file formats
       if (file.name.endsWith('.csv')) {
@@ -947,6 +955,10 @@ export default function Home() {
                               const file = e.target.files?.[0]
                               if (file) {
                                 setCsvFile(file)
+                                // Set simulation name to filename without extension
+                                const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, "")
+                                setSimulationName(fileNameWithoutExt)
+                                setIsSimulationNameManuallySet(true)
                                 const reader = new FileReader()
                                 reader.onload = (event) => {
                                   try {
@@ -1311,14 +1323,19 @@ export default function Home() {
                           <input
                             type="text"
                             value={simulationName}
-                            onChange={(e) => setSimulationName(e.target.value)}
+                            onChange={(e) => {
+                              setSimulationName(e.target.value)
+                              setIsSimulationNameManuallySet(true)
+                            }}
                             onBlur={() => setIsEditingSimulationName(false)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
                                 setIsEditingSimulationName(false)
+                                setIsSimulationNameManuallySet(true)
                               }
                               if (e.key === 'Escape') {
                                 setSimulationName(generateDefaultSimulationName())
+                                setIsSimulationNameManuallySet(false)
                                 setIsEditingSimulationName(false)
                               }
                             }}
