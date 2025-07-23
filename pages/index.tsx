@@ -223,74 +223,103 @@ export default function Home() {
       failed: 0
     })
 
-    // Start progress simulation
-    const progressInterval = setInterval(() => {
-      setFillCacheProgress(prev => {
-        if (!prev) return null
-        
-        // Estimate progress based on time elapsed (rough approximation)
-        const newProcessed = Math.min(prev.processed + 1, prev.total - 1)
-        const newPercentage = (newProcessed / prev.total) * 100
-        
-        return {
-          ...prev,
-          processed: newProcessed,
-          percentage: newPercentage
-        }
-      })
-    }, (estimatedTime * 60 * 1000) / tickers.length) // Distribute progress over estimated time
-    
     try {
-      const response = await fetch('/api/fill-cache', {
+      // Start cache fill and get session ID
+      const startResponse = await fetch('/api/cache/fill-progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          action: 'fill',
-          tickers
-        })
+        body: JSON.stringify({ tickers })
       })
 
-      // Clear progress simulation
-      clearInterval(progressInterval)
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          const successCount = data.results?.successful?.length || data.results?.success?.length || 0
-          const errorCount = data.results?.errors?.length || 0
-          const warningCount = data.results?.warnings?.length || 0
-          
-          // Update final progress
-          setFillCacheProgress({
-            processed: tickers.length,
-            total: tickers.length,
-            percentage: 100,
-            successful: successCount,
-            failed: errorCount
-          })
-          
-          // Show progress for a moment before showing results
-          setTimeout(() => {
-            const successList = data.results?.successful?.join(', ') || data.results?.success?.join(', ') || 'None'
-            const errorList = data.results?.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
-            
-            alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
-            setFillCacheInput('')
-            setFillCacheProgress(null) // Clear progress
-          }, 1500)
-        } else {
-          alert(`Cache fill failed: ${data.message}`)
-        }
-      } else {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Fill cache failed')
+      if (!startResponse.ok) {
+        throw new Error('Failed to start cache fill')
       }
+
+      const { sessionId } = await startResponse.json()
+      console.log('Cache fill started with session:', sessionId)
+
+      // Poll for progress updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const progressResponse = await fetch(`/api/cache/fill-progress?sessionId=${sessionId}`)
+          
+          if (!progressResponse.ok) {
+            console.error('Failed to fetch progress')
+            return
+          }
+
+          const data = await progressResponse.json()
+          
+          // Update progress with real data from backend
+          if (data.progress) {
+            setFillCacheProgress({
+              processed: data.progress.processed,
+              total: data.progress.total,
+              percentage: data.progress.percentage,
+              currentTicker: data.progress.currentTicker,
+              successful: data.progress.successful,
+              failed: data.progress.failed
+            })
+          }
+
+          // Check if completed
+          if (data.completed) {
+            clearInterval(pollInterval)
+            
+            if (data.error) {
+              alert(`Cache fill error: ${data.error}`)
+              setFillCacheProgress(null)
+              setFillCacheLoading(false)
+              return
+            }
+
+            if (data.results) {
+              const successCount = data.results.success?.length || 0
+              const errorCount = data.results.errors?.length || 0
+              const warningCount = data.results.warnings?.length || 0
+              
+              // Update final progress
+              setFillCacheProgress({
+                processed: tickers.length,
+                total: tickers.length,
+                percentage: 100,
+                successful: successCount,
+                failed: errorCount
+              })
+              
+              // Show results after a moment
+              setTimeout(() => {
+                const successList = data.results.success?.join(', ') || 'None'
+                const errorList = data.results.errors?.map((e: any) => `${e.ticker} (${e.error})`).join(', ') || 'None'
+                
+                alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
+                setFillCacheInput('')
+                setFillCacheProgress(null)
+                refreshCacheStats() // Refresh cache stats
+              }, 1500)
+              
+              setFillCacheLoading(false)
+            }
+          }
+        } catch (error) {
+          console.error('Error polling progress:', error)
+        }
+      }, 500) // Poll every 500ms for smooth updates
+
+      // Set timeout to prevent infinite polling
+      setTimeout(() => {
+        clearInterval(pollInterval)
+        if (fillCacheLoading) {
+          alert('Cache fill timed out. Please check the logs.')
+          setFillCacheProgress(null)
+          setFillCacheLoading(false)
+        }
+      }, 10 * 60 * 1000) // 10 minute timeout
+
     } catch (error: any) {
-      clearInterval(progressInterval)
       alert(`Failed to fill cache: ${error.message}`)
       console.error('Fill cache error:', error)
       setFillCacheProgress(null)
-    } finally {
       setFillCacheLoading(false)
     }
   }
