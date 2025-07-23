@@ -897,7 +897,12 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
       {activeTab === 'overview' ? (
         <div id="overview-content" className="space-y-6">
           {/* Strategy Comparison Table */}
-      <div className="overflow-x-auto mb-6">
+          <div className="bg-white rounded-lg border p-6">
+            <div className="flex items-center space-x-3 mb-6">
+              <span className="text-2xl">📊</span>
+              <h3 className="text-xl font-semibold text-gray-900">Strategy Performance Comparison</h3>
+            </div>
+            <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gray-50 border-b">
@@ -938,7 +943,8 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
             })}
           </tbody>
         </table>
-      </div>
+            </div>
+          </div>
 
       {/* Interactive Performance Chart */}
       <div className="bg-white rounded-lg border p-6 mb-6">
