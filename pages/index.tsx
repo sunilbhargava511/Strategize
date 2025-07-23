@@ -681,7 +681,7 @@ export default function Home() {
                       value={tickers}
                       onChange={handleTickerChange}
                       placeholder="Enter tickers separated by commas..."
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
                     
                     <div className="flex items-center justify-between">
@@ -707,18 +707,8 @@ export default function Home() {
                   </div>
                   
                   {detectedTickers.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-gray-600">Detected Tickers ({detectedTickers.length})</p>
-                      <div className="flex flex-wrap gap-2">
-                        {detectedTickers.map((ticker, index) => (
-                          <span
-                            key={index}
-                            className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium"
-                          >
-                            {ticker}
-                          </span>
-                        ))}
-                      </div>
+                    <div className="text-sm text-gray-600">
+                      {detectedTickers.length} tickers ready
                     </div>
                   )}
                 </div>
@@ -735,48 +725,36 @@ export default function Home() {
                   <h2 className="text-xl font-semibold text-gray-900">Analysis Configuration</h2>
                 </div>
 
-                <div className="space-y-6">
-                  {/* Year Range */}
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  {/* Compact Configuration Row */}
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                        </svg>
-                        <span>Start Year</span>
-                      </label>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Start Year</label>
                       <input
                         type="number"
                         value={configuration.startYear}
                         onChange={(e) => setConfiguration({...configuration, startYear: parseInt(e.target.value)})}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     </div>
                     <div>
-                      <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
-                        <span>End Year</span>
-                      </label>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">End Year</label>
                       <input
                         type="number"
                         value={configuration.endYear}
                         onChange={(e) => setConfiguration({...configuration, endYear: parseInt(e.target.value)})}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                       />
                     </div>
-                  </div>
-
-                  {/* Initial Investment */}
-                  <div>
-                    <label className="flex items-center space-x-2 text-sm font-medium text-gray-700 mb-2">
-                      <span className="text-lg">💰</span>
-                      <span>Initial Investment</span>
-                    </label>
-                    <input
-                      type="number"
-                      value={configuration.initialInvestment}
-                      onChange={(e) => setConfiguration({...configuration, initialInvestment: parseInt(e.target.value)})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
+                    <div>
+                      <label className="text-sm font-medium text-gray-700 mb-1 block">Investment ($)</label>
+                      <input
+                        type="number"
+                        value={configuration.initialInvestment}
+                        onChange={(e) => setConfiguration({...configuration, initialInvestment: parseInt(e.target.value)})}
+                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                      />
+                    </div>
                   </div>
 
                   {/* Cache Control */}
