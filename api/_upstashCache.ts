@@ -112,11 +112,11 @@ export const cache = {
   },
 
   // Scan keys iteratively (for large datasets)
-  scan: async (cursor: number, options?: { count?: number }): Promise<[number, string[]]> => {
+  scan: async (cursor: number | string, options?: { count?: number }): Promise<[number | string, string[]]> => {
     if (!redis) return [0, []];
     try {
       const result = await redis.scan(cursor, { count: options?.count || 100 });
-      return [result[0], result[1]];
+      return result;
     } catch (error) {
       console.error('Cache scan error:', error);
       return [0, []];

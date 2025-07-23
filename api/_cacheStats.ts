@@ -200,7 +200,7 @@ export async function rebuildCacheStats(): Promise<CacheStats> {
     logger.info('Rebuilding cache stats using SCAN...');
     
     const stats = createEmptyStats();
-    let cursor = 0;
+    let cursor: string | number = 0;
     let totalScanned = 0;
     
     // Use SCAN instead of KEYS - Upstash supports this!
