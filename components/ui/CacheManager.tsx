@@ -6,6 +6,7 @@ export default function CacheManager() {
   const [isLoading, setIsLoading] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
+  const [isRebuilding, setIsRebuilding] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
@@ -102,6 +103,35 @@ export default function CacheManager() {
     }
   }
 
+  const handleRebuildStats = async () => {
+    if (!confirm('This will rebuild cache statistics from existing data. Continue?')) {
+      return
+    }
+
+    setIsRebuilding(true)
+    try {
+      const response = await fetch('/api/cache-rebuild-stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(`✅ Cache stats rebuilt successfully!\n\nFound:\n• ${data.stats.tickers} tickers\n• ${data.stats.backtests} backtests\n• ${data.stats.shares} shared analyses`)
+        await fetchCacheStats()
+        if (detailedStats) await fetchDetailedStats()
+      } else {
+        const error = await response.json()
+        alert(`❌ Error: ${error.message}`)
+      }
+    } catch (error) {
+      console.error('Rebuild stats error:', error)
+      alert('Failed to rebuild cache stats. Please try again.')
+    } finally {
+      setIsRebuilding(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6 mt-8">
       <div className="flex items-center justify-between mb-6">
@@ -122,29 +152,53 @@ export default function CacheManager() {
 
       {/* Cache Statistics */}
       {cacheStats && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm text-gray-600">Status</div>
-            <div className="text-lg font-semibold text-gray-900 capitalize">
-              {cacheStats.status === 'operational' ? '✅ ' : '❌ '}
-              {cacheStats.status}
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-sm text-gray-600">Status</div>
+              <div className="text-lg font-semibold text-gray-900 capitalize">
+                {cacheStats.status === 'operational' ? '✅ ' : '❌ '}
+                {cacheStats.status}
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-sm text-gray-600">Cache Type</div>
+              <div className="text-lg font-semibold text-gray-900">
+                {cacheStats.type || 'Not configured'}
+              </div>
+            </div>
+            
+            <div className="bg-gray-50 rounded-lg p-4">
+              <div className="text-sm text-gray-600">Cached Items</div>
+              <div className="text-lg font-semibold text-gray-900">
+                {cacheStats.size !== undefined ? cacheStats.size.toLocaleString() : 'N/A'}
+              </div>
             </div>
           </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm text-gray-600">Cache Type</div>
-            <div className="text-lg font-semibold text-gray-900">
-              {cacheStats.type || 'Not configured'}
+
+          {/* Rebuild Stats Button - Show when cache has 0 items but might have data */}
+          {cacheStats.size === 0 && (
+            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start space-x-2">
+                  <span className="text-yellow-600 text-lg">⚠️</span>
+                  <div className="text-sm text-yellow-800">
+                    <p className="font-medium">Cache stats may be out of sync</p>
+                    <p className="text-xs mt-1">If you have existing cached data but it shows 0 items, rebuild the stats.</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleRebuildStats}
+                  disabled={isRebuilding}
+                  className="ml-4 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {isRebuilding ? '🔄 Rebuilding...' : '🔧 Rebuild Stats'}
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-sm text-gray-600">Cached Items</div>
-            <div className="text-lg font-semibold text-gray-900">
-              {cacheStats.size !== undefined ? cacheStats.size.toLocaleString() : 'N/A'}
-            </div>
-          </div>
-        </div>
+          )}
+        </>
       )}
 
       {/* Export Options */}
