@@ -40,36 +40,52 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       completed: false
     });
 
-    // Start async cache fill operation
-    fillCacheWithProgress(tickers, (progress: FillCacheProgress) => {
-      const session = progressStore.get(sessionId);
-      if (session) {
-        session.progress = progress;
-        progressStore.set(sessionId, session);
-      }
-    }).then(results => {
-      const session = progressStore.get(sessionId);
-      if (session) {
-        session.results = results;
-        session.completed = true;
-        progressStore.set(sessionId, session);
-        
-        // Clean up after 5 minutes
-        setTimeout(() => progressStore.delete(sessionId), 5 * 60 * 1000);
-      }
-    }).catch(error => {
-      const session = progressStore.get(sessionId);
-      if (session) {
-        session.error = error.message;
-        session.completed = true;
-        progressStore.set(sessionId, session);
-        
-        // Clean up after 5 minutes
-        setTimeout(() => progressStore.delete(sessionId), 5 * 60 * 1000);
-      }
-    });
+    // Return session ID immediately
+    res.status(200).json({ sessionId });
 
-    return res.status(200).json({ sessionId });
+    // Start async cache fill operation (don't await - run in background)
+    (async () => {
+      try {
+        logger.info(`Starting cache fill for session ${sessionId} with ${tickers.length} tickers: ${tickers.join(', ')}`);
+        
+        const results = await fillCacheWithProgress(tickers, (progress: FillCacheProgress) => {
+          const session = progressStore.get(sessionId);
+          if (session) {
+            session.progress = progress;
+            progressStore.set(sessionId, session);
+            logger.debug(`Session ${sessionId}: Progress ${progress.percentage.toFixed(1)}% - ${progress.processed}/${progress.total}`);
+          }
+        });
+        
+        const session = progressStore.get(sessionId);
+        if (session) {
+          session.results = results;
+          session.completed = true;
+          progressStore.set(sessionId, session);
+          logger.success(`Session ${sessionId}: Cache fill completed successfully`);
+          
+          // Clean up after 5 minutes
+          setTimeout(() => {
+            progressStore.delete(sessionId);
+            logger.debug(`Session ${sessionId}: Cleaned up from memory`);
+          }, 5 * 60 * 1000);
+        }
+      } catch (error) {
+        logger.error(`Session ${sessionId}: Cache fill error:`, error);
+        const session = progressStore.get(sessionId);
+        if (session) {
+          session.error = error instanceof Error ? error.message : String(error);
+          session.completed = true;
+          progressStore.set(sessionId, session);
+          
+          // Clean up after 5 minutes
+          setTimeout(() => {
+            progressStore.delete(sessionId);
+            logger.debug(`Session ${sessionId}: Cleaned up from memory after error`);
+          }, 5 * 60 * 1000);
+        }
+      }
+    })();
     
   } else if (req.method === 'GET') {
     // Get progress for session
