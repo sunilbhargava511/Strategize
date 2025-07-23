@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { Redis } from '@upstash/redis';
+import { cache } from './_upstashCache';
+import { logger } from './_logger';
+import { getCacheStats } from './_cacheStats';
 import * as XLSX from 'xlsx';
 
 interface PriceData {
@@ -38,41 +40,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Check if Redis is configured
-    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-      return res.status(500).json({ 
-        error: 'Cache not configured',
-        message: 'Redis environment variables not set'
-      });
-    }
-
-    const redis = new Redis({
-      url: process.env.KV_REST_API_URL,
-      token: process.env.KV_REST_API_TOKEN,
-    });
-
-    // Get all ticker data keys  
-    const tickerDataKeys = await redis.keys('ticker-data:*');
-    console.log(`Found ${tickerDataKeys.length} ticker-data entries`);
+    logger.info('Starting Excel cache export using stats tracking...');
+    
+    // Get cache stats instead of using KEYS
+    const stats = await getCacheStats();
+    const tickerDataKeys = Array.from(stats.tickers).map(ticker => `ticker-data:${ticker}`);
+    
+    logger.info(`Found ${tickerDataKeys.length} ticker entries from stats`);
 
     // Organize data by year and ticker
     const dataByYear: { [year: string]: YearlyData } = {};
     const tickerInfo: { [ticker: string]: { startYear: number; endYear: number } } = {};
     const allTickers = new Set<string>();
 
-    // Fetch and organize data
+    // Fetch and organize data from new ticker-based structure
     for (const key of tickerDataKeys) {
       try {
-        const value = await redis.get(key) as any;
-        if (value) {
-          // Parse key to extract ticker and date
-          const parts = key.split(':');
-          if (parts.length >= 3) {
-            const ticker = parts[1];
-            const date = parts[2];
-            const year = parseInt(date.substring(0, 4));
-            
-            allTickers.add(ticker);
+        const tickerData = await cache.get(key);
+        if (tickerData && typeof tickerData === 'object') {
+          // Extract ticker from key
+          const ticker = key.replace('ticker-data:', '');
+          allTickers.add(ticker);
+          
+          // Process each year of data for this ticker
+          for (const [yearStr, yearData] of Object.entries(tickerData as Record<string, any>)) {
+            const year = parseInt(yearStr);
             
             // Track year range for each ticker
             if (!tickerInfo[ticker]) {
@@ -90,27 +82,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               dataByYear[year][ticker] = {};
             }
             
-            // Store the data
-            dataByYear[year][ticker].price = value.adjusted_close || value.price || 0;
-            
-            // Use actual market cap and shares outstanding from the cached data
-            if (value.market_cap) {
-              dataByYear[year][ticker].marketCap = value.market_cap;
-            } else if (value.shares_outstanding && dataByYear[year][ticker].price) {
-              // Calculate market cap from shares and price
-              dataByYear[year][ticker].marketCap = dataByYear[year][ticker].price * value.shares_outstanding;
-            }
-            
-            if (value.shares_outstanding) {
-              dataByYear[year][ticker].sharesOutstanding = value.shares_outstanding;
-            } else if (value.market_cap && dataByYear[year][ticker].price) {
-              // Calculate shares from market cap and price
-              dataByYear[year][ticker].sharesOutstanding = Math.floor(value.market_cap / dataByYear[year][ticker].price);
-            }
+            // Store the data from new ticker-based structure
+            dataByYear[year][ticker].price = yearData.price || 0;
+            dataByYear[year][ticker].marketCap = yearData.market_cap || 0;
+            dataByYear[year][ticker].sharesOutstanding = yearData.shares_outstanding || 0;
           }
         }
       } catch (err) {
-        console.error(`Error fetching ${key}:`, err);
+        logger.error(`Error fetching ${key}:`, err);
       }
     }
 
