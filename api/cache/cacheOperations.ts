@@ -46,8 +46,11 @@ export async function validateCacheCoverage(tickers: string[]): Promise<{
   const missing: string[] = [];
   const eliminated: Array<{ticker: string, reason: string}> = [];
   
+  logger.info(`🔍 VALIDATE CACHE: Checking coverage for ${tickers.length} tickers: ${tickers.join(', ')}`);
+  
   // Get failed tickers once
   const failedTickers = await getFailedTickers();
+  logger.info(`❌ Found ${Object.keys(failedTickers).length} failed tickers in database`);
   
   for (const ticker of tickers) {
     // Check if ticker is in failed list first
@@ -56,6 +59,7 @@ export async function validateCacheCoverage(tickers: string[]): Promise<{
         ticker,
         reason: failedTickers[ticker].error
       });
+      logger.info(`❌ ${ticker}: ELIMINATED (failed) - ${failedTickers[ticker].error}`);
       continue;
     }
     
@@ -63,9 +67,13 @@ export async function validateCacheCoverage(tickers: string[]): Promise<{
     const cachedData = await getTickerFromCache(ticker);
     if (!cachedData || Object.keys(cachedData).length === 0) {
       missing.push(ticker);
+      logger.info(`🔍 ${ticker}: MISSING from cache`);
+    } else {
+      logger.info(`✅ ${ticker}: CACHED (${Object.keys(cachedData).length} years)`);
     }
   }
   
+  logger.info(`📊 VALIDATION COMPLETE: ${tickers.length - missing.length - eliminated.length} cached, ${missing.length} missing, ${eliminated.length} eliminated`);
   return { missing, eliminated };
 }
 
