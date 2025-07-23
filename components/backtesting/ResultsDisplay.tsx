@@ -1113,7 +1113,7 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
                 <div className="flex items-center space-x-2 mb-4">
                   <span className="text-lg">{strategy.icon}</span>
                   <h4 className="font-semibold text-gray-900">
-                    {strategy.name} - Final Value: {formatCurrency(results[strategy.key]?.finalValue || 0)}
+                    {strategy.name} - {formatCurrency(results[strategy.key]?.finalValue || 0)}
                   </h4>
                   <span className="text-sm text-gray-500">({endYear-1}-{endYear})</span>
                 </div>
