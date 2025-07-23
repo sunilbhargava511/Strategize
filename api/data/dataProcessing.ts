@@ -280,15 +280,22 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
   };
 
   logger.info(`Starting cache population for ${tickers.length} tickers (EFFICIENT MODE WITH CACHE CHECKING)`);
+  logger.info(`Input tickers: ${tickers.join(', ')}`);
   
   // First, check which tickers are already cached vs missing
   const { missing, eliminated } = await validateCacheCoverage(tickers);
   
   // Report already cached tickers
   const alreadyCached = tickers.filter(t => !missing.includes(t) && !eliminated.find(e => e.ticker === t));
+  
+  logger.info(`📊 CACHE ANALYSIS RESULTS:`);
+  logger.info(`   📁 Already Cached: ${alreadyCached.length} tickers - ${alreadyCached.join(', ') || 'none'}`);
+  logger.info(`   🔍 Missing/Need API: ${missing.length} tickers - ${missing.join(', ') || 'none'}`);
+  logger.info(`   ❌ Previously Failed: ${eliminated.length} tickers - ${eliminated.map(e => e.ticker).join(', ') || 'none'}`);
+  
   if (alreadyCached.length > 0) {
-    logger.info(`✅ ${alreadyCached.length} tickers already cached: ${alreadyCached.join(', ')}`);
     results.success.push(...alreadyCached);
+    logger.success(`✅ ${alreadyCached.length} tickers already cached, skipping API calls for: ${alreadyCached.join(', ')}`);
   }
   
   // Report eliminated tickers
@@ -302,7 +309,7 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
   
   // Only process missing tickers
   const tickersToProcess = missing;
-  logger.info(`🔄 Need to fetch ${tickersToProcess.length} missing tickers from API: ${tickersToProcess.join(', ')}`);
+  logger.info(`🔄 Will fetch ${tickersToProcess.length} missing tickers from EODHD API: ${tickersToProcess.join(', ') || 'none'}`);
   
   if (tickersToProcess.length === 0) {
     logger.success(`🎉 All ${tickers.length} tickers already cached! No API calls needed.`);
@@ -363,7 +370,7 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
       }
       
       try {
-        logger.debug(`Processing ${ticker}...`);
+        logger.info(`🔄 Processing missing ticker: ${ticker}...`);
         
         // Build complete ticker data by fetching directly from EODHD API
         const tickerData: TickerCacheData = {};
@@ -429,7 +436,7 @@ export async function fillCacheWithProgress(tickers: string[], progressCallback?
           // Remove from failed tickers if it was previously failed
           await removeFailedTicker(ticker);
           results.success.push(ticker);
-          logger.success(`${ticker}: Cached ${Object.keys(tickerData).length} years of data`)
+          logger.success(`✅ ${ticker}: Successfully cached ${Object.keys(tickerData).length} years of data (NEW)`)
         } else {
           const errorMsg = 'No price data found for any year';
           results.errors.push({
