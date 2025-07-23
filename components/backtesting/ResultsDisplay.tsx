@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
 
 interface ResultsDisplayProps {
   results: any
@@ -162,6 +164,62 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
     } catch (error) {
       console.error('Download error:', error);
       alert('Failed to download results. Please try again.');
+    }
+  }
+
+  const handlePDFExport = async () => {
+    try {
+      // Get the overview section element
+      const overviewElement = document.getElementById('overview-content');
+      if (!overviewElement) {
+        alert('Overview content not found. Please make sure you are on the Overview tab.');
+        return;
+      }
+
+      // Create canvas from the overview section
+      const canvas = await html2canvas(overviewElement, {
+        scale: 2, // Higher resolution
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+
+      // Create PDF
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF();
+      
+      // Calculate dimensions to fit the page
+      const imgWidth = 210; // A4 width in mm
+      const pageHeight = 295; // A4 height in mm
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      let position = 0;
+
+      // Add title
+      pdf.setFontSize(16);
+      pdf.text(simulationName || 'Portfolio Analysis', 20, 20);
+      position = 30;
+
+      // Add the image
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      // Add new pages if needed
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      // Download the PDF
+      const fileName = `${simulationName || 'Portfolio_Analysis'}_Overview.pdf`;
+      pdf.save(fileName);
+      
+    } catch (error) {
+      console.error('PDF export error:', error);
+      alert('Failed to export PDF. Please try again.');
     }
   }
 
@@ -781,7 +839,7 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
 
       {/* Tab Content */}
       {activeTab === 'overview' ? (
-        <div className="space-y-6">
+        <div id="overview-content" className="space-y-6">
           {/* Strategy Comparison Table */}
       <div className="overflow-x-auto mb-6">
         <table className="w-full border-collapse">
@@ -1052,11 +1110,13 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
             </div>
           </button>
           
-          <button className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-            <span>📊</span>
+          <button 
+            onClick={handlePDFExport}
+            className="flex items-center space-x-2 p-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+            <span>📄</span>
             <div className="text-left">
-              <div className="font-medium">Strategy Tabs</div>
-              <div className="text-sm text-gray-600">Detailed holdings and allocations by year</div>
+              <div className="font-medium">PDF Overview (.pdf)</div>
+              <div className="text-sm text-gray-600">Export overview tables as PDF document</div>
             </div>
           </button>
           
