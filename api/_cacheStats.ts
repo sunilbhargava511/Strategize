@@ -5,27 +5,28 @@ import { cache } from './_upstashCache';
 import { logger } from './_logger';
 
 // Auto-initialize stats when this module is imported
-let initPromise: Promise<void> | null = null;
+let initPromise: Promise<CacheStats> | null = null;
 
-async function initializeStats(): Promise<void> {
+async function initializeStats(): Promise<CacheStats> {
   if (initPromise) {
     return initPromise;
   }
   
   initPromise = (async () => {
     try {
-      await loadCacheStats();
+      const stats = await loadCacheStatsInternal();
       logger.info('Cache stats initialized successfully');
+      return stats;
     } catch (error) {
       logger.error('Failed to initialize cache stats:', error);
+      const emptyStats = createEmptyStats();
+      inMemoryStats = emptyStats;
+      return emptyStats;
     }
   })();
   
   return initPromise;
 }
-
-// Initialize immediately when module loads
-initializeStats();
 
 export interface CacheStats {
   tickerCount: number;
@@ -83,13 +84,9 @@ function deserializeStats(data: any): CacheStats {
   };
 }
 
-// Load stats from Redis into memory
-export async function loadCacheStats(): Promise<CacheStats> {
+// Internal function to load stats from Redis into memory
+async function loadCacheStatsInternal(): Promise<CacheStats> {
   try {
-    if (inMemoryStats) {
-      return inMemoryStats;
-    }
-
     logger.info('Loading cache stats from Redis...');
     const storedStats = await cache.get(CACHE_STATS_KEY);
     
@@ -124,10 +121,15 @@ export async function saveCacheStats(stats: CacheStats): Promise<void> {
   }
 }
 
+// Load stats from Redis into memory (public interface)
+export async function loadCacheStats(): Promise<CacheStats> {
+  return await initializeStats();
+}
+
 // Get current stats (loads from Redis if not in memory)
 export async function getCacheStats(): Promise<CacheStats> {
   if (!inMemoryStats) {
-    return await loadCacheStats();
+    return await initializeStats();
   }
   return inMemoryStats;
 }
