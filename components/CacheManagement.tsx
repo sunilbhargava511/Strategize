@@ -166,8 +166,14 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
 
     setViewTickerLoading(true)
     try {
-      const response = await fetch(`/api/ticker-cache?ticker=${encodeURIComponent(viewTickerInput)}`)
-      if (!response.ok) throw new Error('Failed to fetch ticker data')
+      const response = await fetch(`/api/cache-management?key=${encodeURIComponent(`ticker-data:${viewTickerInput}`)}`)
+      if (!response.ok) {
+        if (response.status === 404) {
+          setViewTickerData({})
+          return
+        }
+        throw new Error('Failed to fetch ticker data')
+      }
       const data = await response.json()
       setViewTickerData(data.data || {})
     } catch (error: any) {
