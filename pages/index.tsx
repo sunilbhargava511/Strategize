@@ -74,6 +74,11 @@ export default function Home() {
       initialInvestment: cachedAnalysis.initialInvestment,
       useCache: true
     })
+    
+    // Set simulation name from cached analysis
+    if (cachedAnalysis.customName) {
+      setSimulationName(cachedAnalysis.customName)
+    }
 
     // If we have the cached data, load it directly into results
     if (cachedAnalysis.cachedData) {
@@ -494,7 +499,7 @@ export default function Home() {
           endYear: configuration.endYear,
           initialInvestment: configuration.initialInvestment,
           bypass_cache: !configuration.useCache,
-          customName: uploadedFileName
+          customName: simulationName || uploadedFileName
         })
       })
 
