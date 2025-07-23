@@ -194,36 +194,51 @@ export async function removeShareFromStats(key: string): Promise<void> {
   }
 }
 
-// Rebuild stats by scanning all cache entries (emergency fallback)
+// Rebuild stats by scanning all cache entries using SCAN (Upstash compatible)
 export async function rebuildCacheStats(): Promise<CacheStats> {
   try {
-    logger.info('Rebuilding cache stats from scratch...');
-    
-    // This is the fallback - we still need KEYS for rebuilding
-    // But this should only be used in emergency situations
-    const allKeys = await cache.keys('*');
+    logger.info('Rebuilding cache stats using SCAN...');
     
     const stats = createEmptyStats();
+    let cursor = 0;
+    let totalScanned = 0;
     
-    for (const key of allKeys) {
-      if (key === CACHE_STATS_KEY) continue; // Skip the stats key itself
-      
-      if (key.startsWith('ticker-data:')) {
-        const ticker = key.replace('ticker-data:', '');
-        stats.tickers.add(ticker);
-      } else if (key.startsWith('backtest:')) {
-        stats.backtestKeys.add(key);
-      } else if (key.startsWith('shared_analysis:')) {
-        stats.shareKeys.add(key);
+    // Use SCAN instead of KEYS - Upstash supports this!
+    do {
+      try {
+        // Upstash Redis scan returns [cursor, keys]
+        const result = await cache.scan(cursor, { count: 100 });
+        cursor = result[0];
+        const keys = result[1];
+        
+        totalScanned += keys.length;
+        
+        for (const key of keys) {
+          if (key === CACHE_STATS_KEY) continue; // Skip the stats key itself
+          
+          if (key.startsWith('ticker-data:')) {
+            const ticker = key.replace('ticker-data:', '');
+            stats.tickers.add(ticker);
+          } else if (key.startsWith('backtest:')) {
+            stats.backtestKeys.add(key);
+          } else if (key.startsWith('shared_analysis:')) {
+            stats.shareKeys.add(key);
+          }
+        }
+        
+        logger.info(`Scanned ${totalScanned} keys so far...`);
+      } catch (scanError) {
+        logger.error('SCAN iteration error:', scanError);
+        break;
       }
-    }
+    } while (cursor !== 0);
     
     stats.tickerCount = stats.tickers.size;
     stats.backtestCount = stats.backtestKeys.size;
     stats.shareCount = stats.shareKeys.size;
     
     await saveCacheStats(stats);
-    logger.info(`Rebuilt cache stats: ${stats.tickerCount} tickers, ${stats.backtestCount} backtests, ${stats.shareCount} shares`);
+    logger.info(`Rebuilt cache stats: ${stats.tickerCount} tickers, ${stats.backtestCount} backtests, ${stats.shareCount} shares from ${totalScanned} total keys`);
     
     return stats;
   } catch (error) {

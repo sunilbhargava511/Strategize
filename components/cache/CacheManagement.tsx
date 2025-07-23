@@ -48,6 +48,12 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
   const [viewTickerInput, setViewTickerInput] = useState('')
   const [viewTickerData, setViewTickerData] = useState<any>(null)
   const [viewTickerLoading, setViewTickerLoading] = useState(false)
+  
+  // Export/Import states
+  const [exportTickersInput, setExportTickersInput] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
 
   const fetchCachedAnalyses = async () => {
     setLoading(true)
@@ -352,6 +358,94 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
       setViewTickerLoading(false)
     }
   }
+
+  const handleExportTickers = async () => {
+    // Parse CSV input (comma or newline separated)
+    const tickers = exportTickersInput
+      .split(/[\n,]+/)
+      .map(t => t.trim().toUpperCase())
+      .filter(t => t.length > 0);
+
+    if (tickers.length === 0) {
+      alert('Please enter at least one ticker symbol');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const response = await fetch('/api/cache-export-tickers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers })
+      });
+
+      if (!response.ok) {
+        throw new Error('Export failed');
+      }
+
+      // Download the JSON file
+      const data = await response.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `cache-export-${data.metadata.tickerCount}-tickers-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      // Show summary
+      const summary = data.metadata.summary;
+      alert(`✅ Export Complete!\n\nExported: ${summary.exported} tickers\nMissing: ${summary.missing} tickers${summary.errors > 0 ? `\nErrors: ${summary.errors}` : ''}`);
+      
+      // Clear input on success
+      setExportTickersInput('');
+    } catch (error) {
+      console.error('Export error:', error);
+      alert('Export failed. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleImportCache = async () => {
+    if (!importFile) {
+      alert('Please select a file to import');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const fileContent = await importFile.text();
+      const importData = JSON.parse(fileContent);
+
+      // Extract just the data portion (not metadata)
+      const dataToImport = importData.data || importData;
+
+      const response = await fetch('/api/cache-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: dataToImport })
+      });
+
+      if (!response.ok) {
+        throw new Error('Import failed');
+      }
+
+      const result = await response.json();
+      alert(`✅ Import Complete!\n\n${result.message}`);
+      
+      // Clear the form and refresh cache list
+      setImportFile(null);
+      await fetchCachedAnalyses();
+    } catch (error) {
+      console.error('Import error:', error);
+      alert('Import failed. Please check the file format and try again.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
 
   const fillCacheData = async () => {
     const tickers = await getTickersFromInput()
@@ -937,6 +1031,72 @@ export default function CacheManagement({ isOpen, onClose, onSelectAnalysis }: C
                       )}
                     </div>
                   )}
+                </div>
+
+                {/* Export/Import Section */}
+                <div className="bg-white border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center space-x-2 mb-3">
+                    <span className="text-xl">📥</span>
+                    <h4 className="font-semibold text-blue-900">Export/Import Specific Tickers</h4>
+                  </div>
+                  <p className="text-sm text-blue-700 mb-4">
+                    Export cache data for specific tickers to backup or transfer data.
+                  </p>
+                  
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Export Section */}
+                    <div className="space-y-3">
+                      <h5 className="font-medium text-gray-900">Export Tickers</h5>
+                      <div className="space-y-2">
+                        <label className="block text-xs text-gray-600">
+                          Enter tickers to export (comma or newline separated)
+                        </label>
+                        <textarea
+                          value={exportTickersInput}
+                          onChange={(e) => setExportTickersInput(e.target.value)}
+                          placeholder="AAPL, MSFT, GOOGL&#10;or&#10;AAPL&#10;MSFT&#10;GOOGL"
+                          className="w-full h-24 px-3 py-2 border border-gray-300 rounded text-sm"
+                        />
+                        <button
+                          onClick={handleExportTickers}
+                          disabled={isExporting || !exportTickersInput.trim()}
+                          className="w-full px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                        >
+                          {isExporting ? '📥 Exporting...' : '📥 Export Selected'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Import Section */}
+                    <div className="space-y-3">
+                      <h5 className="font-medium text-gray-900">Import Cache Data</h5>
+                      <div className="space-y-2">
+                        <label className="block text-xs text-gray-600">
+                          Select exported JSON file
+                        </label>
+                        <input
+                          type="file"
+                          accept=".json"
+                          onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                        />
+                        <button
+                          onClick={handleImportCache}
+                          disabled={isImporting || !importFile}
+                          className="w-full px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white rounded text-sm font-medium"
+                        >
+                          {isImporting ? '📤 Importing...' : '📤 Import Data'}
+                        </button>
+                        <p className="text-xs text-yellow-600">
+                          ⚠️ This adds to existing cache, doesn't replace
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 bg-blue-50 rounded text-xs text-blue-800">
+                    <strong>Usage:</strong> Export specific tickers → Clear cache → Import to restore only needed data
+                  </div>
                 </div>
 
                 <div className="bg-white border border-red-200 rounded-lg p-4">
