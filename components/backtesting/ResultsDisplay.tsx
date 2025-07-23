@@ -176,41 +176,95 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
         return;
       }
 
-      // Create canvas from the overview section
+      // Temporarily expand the element to its full height to capture all content
+      const originalHeight = overviewElement.style.height;
+      const originalMaxHeight = overviewElement.style.maxHeight;
+      const originalOverflow = overviewElement.style.overflow;
+      
+      // Set styles to capture full content
+      overviewElement.style.height = 'auto';
+      overviewElement.style.maxHeight = 'none';
+      overviewElement.style.overflow = 'visible';
+      
+      // Wait for layout to settle
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Create canvas from the overview section with improved settings
       const canvas = await html2canvas(overviewElement, {
         scale: 2, // Higher resolution
         useCORS: true,
         allowTaint: true,
-        backgroundColor: '#ffffff'
+        backgroundColor: '#ffffff',
+        height: overviewElement.scrollHeight, // Capture full scroll height
+        width: overviewElement.scrollWidth,   // Capture full scroll width
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: overviewElement.scrollWidth,
+        windowHeight: overviewElement.scrollHeight
       });
 
-      // Create PDF
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF();
-      
-      // Calculate dimensions to fit the page
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 295; // A4 height in mm
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
+      // Restore original styles
+      overviewElement.style.height = originalHeight;
+      overviewElement.style.maxHeight = originalMaxHeight;
+      overviewElement.style.overflow = originalOverflow;
 
-      let position = 0;
+      // Create PDF with better handling
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      // A4 dimensions in mm
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const margin = 20;
+      const contentWidth = pageWidth - (margin * 2);
+      const contentHeight = pageHeight - (margin * 2);
+      
+      // Calculate image dimensions to fit page width
+      const imgWidth = contentWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      
+      let yPosition = margin;
+      let remainingHeight = imgHeight;
+      let sourceY = 0;
 
       // Add title
       pdf.setFontSize(16);
-      pdf.text(simulationName || 'Portfolio Analysis', 20, 20);
-      position = 30;
+      pdf.setFont('helvetica', 'bold');
+      pdf.text(simulationName || 'Portfolio Analysis', margin, yPosition);
+      yPosition += 15;
+      remainingHeight += 15;
 
-      // Add the image
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      // Add new pages if needed
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      // Add the image, splitting across pages if necessary
+      while (remainingHeight > 0) {
+        const pageContentHeight = contentHeight - (yPosition - margin);
+        const sliceHeight = Math.min(remainingHeight, pageContentHeight * (canvas.height / imgHeight));
+        
+        // Calculate the portion of the image to show on this page
+        const imgSliceHeight = (sliceHeight / canvas.height) * imgHeight;
+        
+        if (sliceHeight > 0) {
+          // Create a temporary canvas for this slice
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCanvas.width = canvas.width;
+          tempCanvas.height = sliceHeight;
+          
+          // Draw the slice
+          tempCtx?.drawImage(canvas, 0, sourceY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+          
+          // Add to PDF
+          const tempImgData = tempCanvas.toDataURL('image/png');
+          pdf.addImage(tempImgData, 'PNG', margin, yPosition, imgWidth, imgSliceHeight);
+        }
+        
+        remainingHeight -= sliceHeight;
+        sourceY += sliceHeight;
+        
+        // Add new page if there's more content
+        if (remainingHeight > 0) {
+          pdf.addPage();
+          yPosition = margin;
+        }
       }
 
       // Download the PDF
