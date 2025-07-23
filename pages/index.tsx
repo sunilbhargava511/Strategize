@@ -295,7 +295,7 @@ export default function Home() {
                 alert(`Cache Fill Complete!\n\n✅ Success: ${successCount}\n❌ Errors: ${errorCount}\n⚠️ Warnings: ${warningCount}\n\nSuccessfully cached: ${successList}\nErrors: ${errorList}`)
                 setFillCacheInput('')
                 setFillCacheProgress(null)
-                refreshCacheStats() // Refresh cache stats
+                fetchCacheStats() // Refresh cache stats
               }, 1500)
               
               setFillCacheLoading(false)
