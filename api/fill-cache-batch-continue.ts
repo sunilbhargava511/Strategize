@@ -118,12 +118,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }, BATCH_CONSTANTS.TIMEOUT_SAFETY_MARGIN);
 
     try {
+      // Log batch start with detailed info
+      logger.info(`🚀 BATCH START: Job ${jobId} - Processing batch ${job.currentBatch + 1}/${job.totalBatches}`);
+      logger.info(`📋 BATCH TICKERS: [${batchTickers.join(', ')}] (${batchTickers.length} tickers)`);
+      logger.info(`⏱️  BATCH TIMING: Started at ${new Date().toISOString()}`);
+      
       // Process the current batch
       const results = await fillCacheWithProgress(batchTickers, (progress) => {
-        logger.info(`📊 Batch ${job.currentBatch + 1}/${job.totalBatches} progress: ${progress.processed}/${progress.total} (${progress.percentage.toFixed(1)}%)`);
+        logger.info(`📊 BATCH PROGRESS: Job ${jobId} Batch ${job.currentBatch + 1}/${job.totalBatches} - ${progress.processed}/${progress.total} tickers (${progress.percentage.toFixed(1)}%)`);
+        if (progress.currentTicker) {
+          logger.info(`🔄 PROCESSING TICKER: ${progress.currentTicker} in batch ${job.currentBatch + 1}`);
+        }
       });
 
       clearTimeout(timeoutId);
+      
+      // Log batch completion details
+      const batchEndTime = new Date().toISOString();
+      logger.info(`✅ BATCH COMPLETE: Job ${jobId} Batch ${job.currentBatch + 1}/${job.totalBatches} finished at ${batchEndTime}`);
+      logger.info(`📈 BATCH RESULTS: ${results.success.length} successful, ${results.errors.length} failed`);
+      if (results.success.length > 0) {
+        logger.info(`🎯 SUCCESSFUL TICKERS: [${results.success.join(', ')}]`);
+      }
+      if (results.errors.length > 0) {
+        logger.info(`❌ FAILED TICKERS: [${results.errors.map(e => `${e.ticker}(${e.error})`).join(', ')}]`);
+      }
 
       // Update batch progress
       const updatedJob = await updateBatchProgress(jobId, {
@@ -136,7 +155,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const batchDuration = Date.now() - startTime;
-      logger.success(`✅ Completed batch ${updatedJob.currentBatch}/${updatedJob.totalBatches} for job ${jobId} in ${(batchDuration / 1000).toFixed(1)}s`);
+      logger.success(`✅ BATCH SUMMARY: Job ${jobId} completed batch ${updatedJob.currentBatch}/${updatedJob.totalBatches} in ${(batchDuration / 1000).toFixed(1)}s`);
+      
+      // Log overall job progress
+      const overallProgress = (updatedJob.processed / updatedJob.totalTickers * 100).toFixed(1);
+      logger.info(`📊 JOB PROGRESS: ${updatedJob.processed}/${updatedJob.totalTickers} tickers (${overallProgress}%) - ${updatedJob.successful} successful, ${updatedJob.failed} failed`);
+      
+      if (updatedJob.estimatedTimeRemaining) {
+        const remainingMinutes = Math.round(updatedJob.estimatedTimeRemaining / 60);
+        logger.info(`⏳ TIME ESTIMATE: ~${remainingMinutes} minutes remaining (${updatedJob.totalBatches - updatedJob.currentBatch} batches left)`);
+      }
 
       // Prepare response
       const response = {
@@ -165,7 +193,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       // Auto-continue to next batch if requested and not completed
       if (autoContinue && updatedJob.status === 'running' && updatedJob.currentBatch < updatedJob.totalBatches) {
-        logger.info(`🔄 Auto-continuing to next batch for job ${jobId}...`);
+        logger.info(`🔄 AUTO-CONTINUE: Job ${jobId} scheduling next batch ${updatedJob.currentBatch + 1}/${updatedJob.totalBatches}`);
+        logger.info(`⏰ AUTO-CONTINUE DELAY: Waiting ${BATCH_CONSTANTS.CONTINUATION_DELAY}ms before next batch`);
         
         // Add small delay to prevent overwhelming the system
         setTimeout(async () => {
@@ -174,6 +203,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const host = req.headers.host;
             const continueUrl = `${protocol}://${host}/api/fill-cache-batch-continue`;
             
+            logger.info(`🔗 AUTO-CONTINUE TRIGGER: Calling ${continueUrl} for job ${jobId}`);
+            
             const continueResponse = await fetch(continueUrl, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -181,20 +212,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             });
             
             if (!continueResponse.ok) {
-              logger.error(`Failed to auto-continue batch job ${jobId}: ${continueResponse.status}`);
+              logger.error(`❌ AUTO-CONTINUE FAILED: Job ${jobId} - HTTP ${continueResponse.status}`);
+              logger.error(`🚨 BATCH CHAIN BROKEN: Auto-continuation failed for job ${jobId}`);
             } else {
-              logger.info(`🚀 Successfully triggered next batch for job ${jobId}`);
+              logger.success(`✅ AUTO-CONTINUE SUCCESS: Job ${jobId} - Next batch triggered successfully`);
             }
           } catch (error) {
-            logger.error(`Error auto-continuing batch job ${jobId}:`, error);
+            logger.error(`💥 AUTO-CONTINUE ERROR: Job ${jobId} - ${error.message}`);
+            logger.error(`🚨 BATCH CHAIN BROKEN: Exception in auto-continuation for job ${jobId}`);
           }
         }, BATCH_CONSTANTS.CONTINUATION_DELAY);
 
-        response.message = 'Batch completed - continuing to next batch automatically';
+        response.message = 'Batch completed - auto-continuing to next batch';
       } else {
-        response.message = updatedJob.status === 'completed' ? 
-          'All batches completed!' : 
-          'Batch completed - call continue API for next batch';
+        if (updatedJob.status === 'completed') {
+          logger.success(`🎉 JOB COMPLETE: Job ${jobId} finished all ${updatedJob.totalBatches} batches!`);
+          logger.info(`🏁 FINAL STATS: ${updatedJob.successful} successful, ${updatedJob.failed} failed out of ${updatedJob.totalTickers} total tickers`);
+          response.message = 'All batches completed!';
+        } else {
+          logger.info(`⏸️  BATCH PAUSED: Job ${jobId} - Manual continuation required`);
+          response.message = 'Batch completed - call continue API for next batch';
+        }
       }
 
       return res.status(200).json(response);

@@ -109,7 +109,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    logger.info(`🚀 Starting batch job for ${tickersToProcess.length} tickers (batch size: ${batchSize})`);
+    logger.info(`🚀 BATCH JOB INIT: Starting batch job for ${tickersToProcess.length} tickers (batch size: ${batchSize})`);
+    logger.info(`📊 BATCH JOB CONFIG: Source=${tickerSource}, Total=${tickersToProcess.length}, BatchSize=${batchSize}`);
 
     // Create the batch job
     const batchJob = await createBatchJob(tickersToProcess, batchSize);
@@ -118,7 +119,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const progress = await getBatchProgress(batchJob.jobId);
     
     const duration = Date.now() - startTime;
-    logger.success(`✅ Created batch job ${batchJob.jobId} in ${duration}ms`);
+    logger.success(`✅ BATCH JOB CREATED: Job ${batchJob.jobId} initialized in ${duration}ms`);
+    logger.info(`📈 BATCH JOB STATS: ${batchJob.totalBatches} batches, ${batchJob.tickersToProcess.length} to process, ${batchJob.totalTickers - batchJob.tickersToProcess.length} already cached`);
 
     // Prepare response
     const response = {
@@ -147,12 +149,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Auto-start first batch if requested and there are batches to process
     if (startImmediately && batchJob.totalBatches > 0) {
-      logger.info(`🔄 Auto-starting first batch for job ${batchJob.jobId}...`);
+      logger.info(`🔄 AUTO-START: Scheduling first batch for job ${batchJob.jobId} in 1 second...`);
+      logger.info(`🎯 AUTO-START TARGET: Will process first ${batchJob.batchSize} tickers from total ${batchJob.tickersToProcess.length}`);
       
       // Start first batch with a small delay
       setTimeout(async () => {
         try {
           const continueUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-continue`;
+          logger.info(`🔗 AUTO-START TRIGGER: Calling ${continueUrl} for job ${batchJob.jobId}`);
+          
           const continueResponse = await fetch(continueUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -163,16 +168,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           
           if (!continueResponse.ok) {
-            logger.error(`Failed to auto-start batch job ${batchJob.jobId}: ${continueResponse.status}`);
+            logger.error(`❌ AUTO-START FAILED: Job ${batchJob.jobId} - HTTP ${continueResponse.status}`);
+            logger.error(`🚨 BATCH JOB STALLED: Failed to auto-start job ${batchJob.jobId}`);
           } else {
-            logger.success(`🚀 Auto-started batch job ${batchJob.jobId}`);
+            logger.success(`✅ AUTO-START SUCCESS: Job ${batchJob.jobId} - First batch triggered successfully`);
+            logger.info(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running automatically`);
           }
         } catch (error) {
-          logger.error(`Error auto-starting batch job ${batchJob.jobId}:`, error);
+          logger.error(`💥 AUTO-START ERROR: Job ${batchJob.jobId} - ${error.message}`);
+          logger.error(`🚨 BATCH JOB STALLED: Exception in auto-start for job ${batchJob.jobId}`);
         }
       }, 1000); // 1 second delay
 
       response.message += ' - first batch starting automatically';
+      logger.info(`📋 AUTO-START QUEUED: Job ${batchJob.jobId} will begin processing automatically`);
+    } else if (batchJob.totalBatches === 0) {
+      logger.success(`🎉 NO PROCESSING NEEDED: All tickers already cached for job ${batchJob.jobId}`);
+    } else {
+      logger.info(`⏸️  MANUAL START: Job ${batchJob.jobId} requires manual trigger via /api/fill-cache-batch-continue`);
     }
 
     return res.status(201).json(response);
