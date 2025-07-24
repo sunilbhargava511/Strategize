@@ -8,6 +8,7 @@ import {
   validateCacheCoverage
 } from './_cacheUtils';
 import { fillCacheWithProgress } from './data/dataProcessing';
+import { createBatchJob, getBatchProgress } from './_batchProcessing';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Enable CORS
@@ -24,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { tickers, action } = req.body;
+    const { tickers, action, useBatch = false } = req.body;
 
     if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
       return res.status(400).json({ 
@@ -73,6 +74,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === 'fill') {
       console.log(`🔄 FILL CACHE: Starting to fill cache for ${tickers.length} tickers`);
       
+      // Check if we should use batch processing for large ticker lists
+      const shouldUseBatch = useBatch || tickers.length > 50;
+      
+      if (shouldUseBatch) {
+        console.log(`📦 Using batch processing for ${tickers.length} tickers`);
+        
+        try {
+          // Create batch job
+          const batchJob = await createBatchJob(tickers);
+          const progress = await getBatchProgress(batchJob.jobId);
+          
+          return res.status(202).json({
+            success: true,
+            batchMode: true,
+            jobId: batchJob.jobId,
+            message: `Batch job created for ${tickers.length} tickers`,
+            batchInfo: {
+              totalTickers: batchJob.totalTickers,
+              totalBatches: batchJob.totalBatches,
+              batchSize: batchJob.batchSize,
+              tickersToProcess: batchJob.tickersToProcess.length,
+              alreadyCached: batchJob.totalTickers - batchJob.tickersToProcess.length
+            },
+            progress,
+            nextSteps: {
+              checkStatus: `/api/fill-cache-batch-status?jobId=${batchJob.jobId}`,
+              startProcessing: `/api/fill-cache-batch-continue`,
+              autoStart: 'Job will start automatically in a few seconds'
+            }
+          });
+        } catch (error: any) {
+          console.error('Batch job creation failed:', error);
+          return res.status(500).json({
+            success: false,
+            error: 'Batch job creation failed',
+            message: error.message,
+            fallback: 'Will attempt regular processing instead'
+          });
+        }
+      }
+      
+      // Regular processing for smaller ticker lists
       try {
         const results = await fillCacheWithProgress(tickers, (progress) => {
           // For now, just log progress - we'll implement streaming later
@@ -87,6 +130,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         
         return res.status(statusCode).json({
           success: results.errors.length === 0,
+          batchMode: false,
           results: {
             successful: results.success,
             errors: results.errors,

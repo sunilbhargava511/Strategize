@@ -46,3 +46,4 @@ coverage/
 *.tsbuildinfo
 .tsc-cache/
 .vercel
+.env*.local
