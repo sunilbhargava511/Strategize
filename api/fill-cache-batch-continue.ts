@@ -190,9 +190,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }
         }, BATCH_CONSTANTS.CONTINUATION_DELAY);
 
-        response.message = updatedJob.status === 'completed' ? 
-          'Batch completed - all done!' : 
-          'Batch completed - continuing to next batch automatically';
+        response.message = 'Batch completed - continuing to next batch automatically';
       } else {
         response.message = updatedJob.status === 'completed' ? 
           'All batches completed!' : 
