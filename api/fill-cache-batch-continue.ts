@@ -217,8 +217,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             } else {
               logger.success(`✅ AUTO-CONTINUE SUCCESS: Job ${jobId} - Next batch triggered successfully`);
             }
-          } catch (error) {
-            logger.error(`💥 AUTO-CONTINUE ERROR: Job ${jobId} - ${error.message}`);
+          } catch (error: any) {
+            logger.error(`💥 AUTO-CONTINUE ERROR: Job ${jobId} - ${error.message || 'Unknown error'}`);
             logger.error(`🚨 BATCH CHAIN BROKEN: Exception in auto-continuation for job ${jobId}`);
           }
         }, BATCH_CONSTANTS.CONTINUATION_DELAY);

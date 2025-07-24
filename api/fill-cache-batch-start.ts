@@ -174,8 +174,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             logger.success(`✅ AUTO-START SUCCESS: Job ${batchJob.jobId} - First batch triggered successfully`);
             logger.info(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running automatically`);
           }
-        } catch (error) {
-          logger.error(`💥 AUTO-START ERROR: Job ${batchJob.jobId} - ${error.message}`);
+        } catch (error: any) {
+          logger.error(`💥 AUTO-START ERROR: Job ${batchJob.jobId} - ${error.message || 'Unknown error'}`);
           logger.error(`🚨 BATCH JOB STALLED: Exception in auto-start for job ${batchJob.jobId}`);
         }
       }, 1000); // 1 second delay
