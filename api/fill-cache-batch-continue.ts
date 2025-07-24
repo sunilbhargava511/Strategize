@@ -159,7 +159,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         estimatedTimeRemaining: updatedJob.estimatedTimeRemaining,
         nextBatchAvailable: updatedJob.currentBatch < updatedJob.totalBatches,
-        duration: batchDuration
+        duration: batchDuration,
+        message: '' // Will be set below
       };
 
       // Auto-continue to next batch if requested and not completed
