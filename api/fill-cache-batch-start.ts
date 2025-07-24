@@ -49,6 +49,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.info('🔍 Fetching all S&P 500 tickers for batch processing...');
       try {
         const validTickers = await getValidUSTickers();
+        if (!validTickers || !Array.isArray(validTickers)) {
+          throw new Error('No valid tickers returned from data source');
+        }
         tickersToProcess = validTickers.slice(0, 500); // First 500 should cover most S&P 500
         logger.success(`📊 Retrieved ${tickersToProcess.length} S&P 500 tickers`);
       } catch (error) {
@@ -62,6 +65,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       logger.info('🔍 Fetching all valid US tickers for batch processing...');
       try {
         const validTickers = await getValidUSTickers();
+        if (!validTickers || !Array.isArray(validTickers)) {
+          throw new Error('No valid tickers returned from data source');
+        }
         tickersToProcess = validTickers;
         logger.success(`📊 Retrieved ${tickersToProcess.length} valid US tickers`);
       } catch (error) {
