@@ -79,7 +79,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           estimatedRemainingSeconds: progress.estimatedTimeRemaining
         },
         currentTicker: progress.currentTicker,
-        queryTime: duration
+        queryTime: duration,
+        message: '', // Will be set below
+        detailed: undefined as any // Will be set conditionally
       };
 
       // Add detailed information if requested
