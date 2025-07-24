@@ -49,10 +49,29 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
       const response = await fetch('/api/cache-management')
       if (!response.ok) throw new Error('Failed to fetch cache stats')
       const data = await response.json()
-      setCacheStats(data.cacheStatistics || null)
+      
+      // Ensure cacheStatistics has proper structure
+      const cacheStats = data.cacheStatistics || {}
+      const normalizedStats = {
+        uniqueTickers: cacheStats.uniqueTickers || 0,
+        cacheStructure: cacheStats.cacheStructure || 'Unknown',
+        failedTickersCount: cacheStats.failedTickersCount || 0,
+        tickersList: cacheStats.tickersList || [],
+        failedTickers: cacheStats.failedTickers || []
+      }
+      
+      setCacheStats(normalizedStats)
     } catch (error: any) {
       console.error('Error fetching cache stats:', error)
       setCacheStatsError(error.message)
+      // Set empty stats on error to prevent undefined access
+      setCacheStats({
+        uniqueTickers: 0,
+        cacheStructure: 'Unknown',
+        failedTickersCount: 0,
+        tickersList: [],
+        failedTickers: []
+      })
     } finally {
       setCacheStatsLoading(false)
     }
@@ -84,7 +103,10 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
       if (!response.ok) throw new Error('Validation failed')
       const data = await response.json()
       
-      const { cached, missing, failed } = data
+      const cached = data.cached || []
+      const missing = data.missing || []
+      const failed = data.failed || []
+      
       const summary = [
         `📊 Validation Results for ${tickers.length} tickers:`,
         `✅ Already cached: ${cached.length}`,
@@ -521,7 +543,7 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
               </div>
               
               <div className="space-y-2 max-h-48 overflow-y-auto">
-                {cacheStats.failedTickers?.map((failed, index) => (
+                {(cacheStats.failedTickers || []).map((failed, index) => (
                   <div key={index} className="bg-red-50 rounded-lg p-3 text-xs">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium text-red-900">{failed.ticker}</span>
