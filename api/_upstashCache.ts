@@ -88,6 +88,37 @@ export const cache = {
     }
   },
 
+  // Get multiple values at once with batching to handle size limits
+  mgetBatched: async (keys: string[], batchSize: number = 10): Promise<any[]> => {
+    if (!redis || keys.length === 0) return [];
+    
+    const results: any[] = [];
+    
+    // Process keys in batches to avoid hitting the 10MB request limit
+    for (let i = 0; i < keys.length; i += batchSize) {
+      const batch = keys.slice(i, i + batchSize);
+      try {
+        const batchResults = await redis.mget(...batch);
+        results.push(...batchResults);
+      } catch (error: any) {
+        console.error(`Cache mget batch error (batch ${Math.floor(i/batchSize) + 1}):`, error);
+        
+        // If batch still fails, try one by one
+        for (const key of batch) {
+          try {
+            const singleResult = await redis.get(key);
+            results.push(singleResult);
+          } catch (singleError) {
+            console.error(`Cache get error for key ${key}:`, singleError);
+            results.push(null);
+          }
+        }
+      }
+    }
+    
+    return results;
+  },
+
   // Delete multiple keys at once
   mdel: async (keys: string[]): Promise<number> => {
     if (!redis || keys.length === 0) return 0;

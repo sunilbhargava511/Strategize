@@ -46,8 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
 
-      // Get all cached results
-      const cachedResults = await cache.mget(backtestKeys);
+      // Get all cached results using batched approach to avoid 10MB limit
+      const cachedResults = await cache.mgetBatched(backtestKeys, 5); // Small batch size for large analysis objects
       
       const analyses: CachedAnalysis[] = [];
       
