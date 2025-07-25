@@ -112,6 +112,9 @@ export default function Home() {
 
     // If we have the cached data, load it directly into results
     if (cachedAnalysis.cachedData) {
+      // Auto-expand results panel to full screen for better viewing experience
+      setLeftPanelCollapsed(true)
+      
       setResults(cachedAnalysis.cachedData)
       setShowResults(true)
       
@@ -245,6 +248,9 @@ export default function Home() {
       if (!proceed) return
     }
 
+    // Auto-expand results panel to full screen for better viewing experience
+    setLeftPanelCollapsed(true)
+
     // Scroll to top to show progress
     window.scrollTo({ top: 0, behavior: 'smooth' })
 
@@ -359,6 +365,8 @@ export default function Home() {
       })
 
       setResults(data)
+      // Ensure results panel is expanded when showing results
+      setLeftPanelCollapsed(true)
       setShowResults(true)
     } catch (error: any) {
       console.error('Analysis error:', error)
