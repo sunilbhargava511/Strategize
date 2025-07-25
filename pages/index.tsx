@@ -437,46 +437,47 @@ export default function Home() {
           <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
-              {/* Setup & Configuration Card */}
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Setup & Configuration Card - Fidelity Style */}
+              <div className="bg-white border border-gray-200 shadow-sm">
+                {/* Fidelity-style Header */}
+                <div className="bg-gradient-to-r from-green-700 to-green-800 text-white px-6 py-4">
+                  <div className="flex items-center space-x-3">
+                    <svg className="w-6 h-6 text-green-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     </svg>
+                    <h2 className="text-xl font-semibold tracking-wide">Portfolio Setup</h2>
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Setup & Configuration</h2>
                 </div>
+                
+                <div className="p-6">
 
-                {/* Stock Tickers Input */}
+                {/* Stock Tickers Input - Fidelity Style */}
                 <div className="space-y-4">
-                  <div className="flex items-center space-x-2">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <h3 className="text-lg font-medium text-gray-900">Stock Tickers Input</h3>
-                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Securities Selection</h3>
                   
-                  <div className="space-y-3">
-                    <input
-                      type="text"
-                      value={tickers}
-                      onChange={handleTickerChange}
-                      placeholder="Enter tickers separated by commas..."
-                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    />
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Stock Symbols</label>
+                      <input
+                        type="text"
+                        value={tickers}
+                        onChange={handleTickerChange}
+                        placeholder="Enter stock symbols separated by commas (e.g., AAPL, MSFT, GOOGL)"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-mono"
+                      />
+                    </div>
                     
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">or upload from file</span>
+                    <div className="flex items-center justify-between border-t border-gray-200 pt-4">
+                      <span className="text-sm text-gray-600 font-medium">Import from File</span>
                       <button
                         onClick={handleUploadClick}
-                        className="flex items-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
+                        className="flex items-center space-x-2 px-4 py-2 bg-green-700 hover:bg-green-800 text-white rounded-md transition-colors text-sm font-medium shadow-sm"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                         </svg>
-                        <span>Upload CSV/TXT</span>
+                        <span>Upload File</span>
                       </button>
                     </div>
                     
@@ -490,97 +491,132 @@ export default function Home() {
                   </div>
                   
                   {detectedTickers.length > 0 && (
-                    <div className="text-sm text-gray-600">
-                      {detectedTickers.length} tickers ready
+                    <div className="bg-green-50 border border-green-200 rounded-md p-3">
+                      <div className="flex items-center space-x-2">
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-sm font-medium text-green-800">
+                          {detectedTickers.length} securities ready for analysis
+                        </span>
+                      </div>
                     </div>
                   )}
                 </div>
+                </div>
               </div>
 
-              {/* Analysis Configuration Card */}
-              <div className="bg-white rounded-2xl shadow-sm p-6">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {/* Analysis Configuration Card - Fidelity Style */}
+              <div className="bg-white border border-gray-200 shadow-sm">
+                {/* Fidelity-style Header */}
+                <div className="bg-gradient-to-r from-green-700 to-green-800 text-white px-6 py-4">
+                  <div className="flex items-center space-x-3">
+                    <svg className="w-6 h-6 text-green-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
+                    <h2 className="text-xl font-semibold tracking-wide">Analysis Parameters</h2>
                   </div>
-                  <h2 className="text-xl font-semibold text-gray-900">Analysis Configuration</h2>
                 </div>
+                
+                <div className="p-6">
 
-                <div className="space-y-4">
-                  {/* Compact Configuration Row */}
-                  <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-6">
+                  <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Investment Period & Amount</h3>
+                  
+                  {/* Configuration Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Start Year</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Start Year</label>
                       <input
                         type="number"
                         value={configuration.startYear}
                         onChange={(e) => setConfiguration({...configuration, startYear: parseInt(e.target.value)})}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-mono"
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">End Year</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">End Year</label>
                       <input
                         type="number"
                         value={configuration.endYear}
                         onChange={(e) => setConfiguration({...configuration, endYear: parseInt(e.target.value)})}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-mono"
                       />
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-700 mb-1 block">Investment ($)</label>
-                      <input
-                        type="number"
-                        value={configuration.initialInvestment}
-                        onChange={(e) => setConfiguration({...configuration, initialInvestment: parseInt(e.target.value)})}
-                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Initial Investment</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-3 text-gray-500 text-sm">$</span>
+                        <input
+                          type="number"
+                          value={configuration.initialInvestment}
+                          onChange={(e) => setConfiguration({...configuration, initialInvestment: parseInt(e.target.value)})}
+                          className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 text-sm font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
 
-                  {/* Cache Option */}
-                  <div>
-                    <label className="flex items-center space-x-3 cursor-pointer">
+                  {/* Cache Option - Fidelity Style */}
+                  <div className="border-t border-gray-200 pt-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Performance Options</h4>
+                    <label className="flex items-center space-x-3 cursor-pointer p-3 border border-gray-200 rounded-md hover:bg-gray-50">
                       <input
                         type="checkbox"
                         checked={configuration.useCache}
                         onChange={(e) => setConfiguration({...configuration, useCache: e.target.checked})}
-                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                       />
-                      <span className="text-sm text-gray-700">Use Cache (faster analysis)</span>
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">Use Cached Data</span>
+                        <p className="text-xs text-gray-600">Faster analysis using pre-loaded market data</p>
+                      </div>
                     </label>
                   </div>
                 </div>
+                </div>
               </div>
 
-              {/* Ready to Analyze Card */}
-              <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl shadow-sm p-8 text-center">
-                <h3 className="text-2xl font-bold text-gray-900 mb-6">Ready to Analyze?</h3>
-                <button
-                  onClick={handleRunAnalysis}
-                  disabled={isRunning || detectedTickers.length === 0}
-                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 
-                           disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-4 px-8 
-                           rounded-xl transition-all transform hover:scale-105 active:scale-95
-                           flex items-center justify-center space-x-3 text-lg shadow-lg"
-                >
-                  {isRunning ? (
-                    <>
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                      <span>Running Analysis...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span>Run Strategy Analysis</span>
-                    </>
-                  )}
-                </button>
+              {/* Ready to Analyze Card - Fidelity Style */}
+              <div className="bg-white border border-gray-200 shadow-sm">
+                {/* Fidelity-style Header */}
+                <div className="bg-gradient-to-r from-green-700 to-green-800 text-white px-6 py-4">
+                  <div className="flex items-center space-x-3">
+                    <svg className="w-6 h-6 text-green-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <h2 className="text-xl font-semibold tracking-wide">Execute Analysis</h2>
+                  </div>
+                </div>
+                
+                <div className="p-6">
+                  <div className="text-center">
+                    <p className="text-gray-600 mb-6">
+                      Run comprehensive portfolio analysis with multiple strategy comparisons
+                    </p>
+                    <button
+                      onClick={handleRunAnalysis}
+                      disabled={isRunning || detectedTickers.length === 0}
+                      className="w-full bg-green-700 hover:bg-green-800 disabled:bg-gray-400 text-white font-semibold py-4 px-8 
+                               rounded-md transition-all flex items-center justify-center space-x-3 text-lg shadow-sm"
+                    >
+                      {isRunning ? (
+                        <>
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                          <span>Analyzing Portfolio...</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <span>Run Analysis</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Simulation History */}
