@@ -865,29 +865,42 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      <div className="flex items-center space-x-2 mb-6">
-        <span className="text-2xl">📊</span>
-        <h2 className="text-2xl font-semibold text-primary-900">
-          Analysis Results {simulationName && <span className="text-lg font-medium text-gray-600">({simulationName})</span>}
-        </h2>
+    <div className="bg-white border border-gray-200 shadow-sm">
+      {/* Fidelity-style Header */}
+      <div className="bg-gradient-to-r from-green-700 to-green-800 text-white px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold tracking-wide">
+              Portfolio Analysis
+            </h2>
+            {simulationName && (
+              <p className="text-green-100 text-sm mt-1">{simulationName}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-green-100 text-xs uppercase tracking-wide">Performance Summary</p>
+            <p className="text-white font-mono text-lg">
+              {results.parameters?.startYear} - {results.parameters?.endYear}
+            </p>
+          </div>
+        </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8 overflow-x-auto">
+      {/* Tab Navigation - Fidelity Style */}
+      <div className="bg-gray-50 border-b border-gray-200">
+        <nav className="flex overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-1 border-b-2 font-medium text-sm whitespace-nowrap flex items-center space-x-2 ${
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  ? 'border-green-600 text-green-700 bg-white'
+                  : 'border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-100'
               }`}
             >
-              <span>{tab.icon}</span>
-              <span>{tab.name}</span>
+              <span className="mr-2">{tab.icon}</span>
+              {tab.name}
             </button>
           ))}
         </nav>
@@ -895,152 +908,260 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
 
       {/* Tab Content */}
       {activeTab === 'overview' ? (
-        <div id="overview-content" className="space-y-6">
-          {/* Strategy Comparison Table */}
-          <div className="bg-white rounded-lg border p-6">
-            <div className="flex items-center space-x-3 mb-6">
-              <span className="text-2xl">📊</span>
-              <h3 className="text-xl font-semibold text-gray-900">Strategy Performance Comparison</h3>
-            </div>
-            <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="bg-gray-50 border-b">
-              <th className="text-left p-4 font-semibold text-gray-900">Strategy</th>
-              <th className="text-right p-4 font-semibold text-gray-900">Total Return</th>
-              <th className="text-right p-4 font-semibold text-gray-900">Annualized Return</th>
-              <th className="text-right p-4 font-semibold text-gray-900">Final Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {strategies.map(strategy => {
-              const data = results[strategy.key]
-              if (!data) return null
-
+        <div id="overview-content" className="bg-white">
+          {/* Top Performance Cards - Fidelity Style */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-6 bg-gray-50 border-b">
+            {(() => {
+              const topStrategy = strategies.reduce((best, current) => {
+                const currentData = results[current.key]
+                const bestData = results[best.key]
+                return currentData?.totalReturn > bestData?.totalReturn ? current : best
+              })
+              const topData = results[topStrategy.key]
+              
               return (
-                <tr key={strategy.key} className="border-b hover:bg-gray-50">
-                  <td className="p-4">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-lg">{strategy.icon}</span>
-                      <span className="font-medium">{strategy.name}</span>
-                    </div>
-                  </td>
-                  <td className="p-4 text-right font-mono">
-                    <span className={data.totalReturn > 0 ? 'text-success' : 'text-danger'}>
-                      {formatPercentage(data.totalReturn)}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right font-mono">
-                    <span className={data.annualizedReturn > 0 ? 'text-success' : 'text-danger'}>
-                      {formatPercentage(data.annualizedReturn)}
-                    </span>
-                  </td>
-                  <td className="p-4 text-right font-mono font-bold">
-                    {formatCurrency(data.finalValue)}
-                  </td>
-                </tr>
+                <>
+                  <div className="bg-white p-4 border-l-4 border-green-600 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Best Performer</p>
+                    <p className="text-sm font-medium text-gray-900">{topStrategy.name}</p>
+                    <p className="text-2xl font-bold text-green-600 mt-2">
+                      {formatPercentage(topData.totalReturn)}
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 border-l-4 border-blue-600 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Portfolio Value</p>
+                    <p className="text-sm text-gray-600">Initial: {formatCurrency(results.parameters?.initialInvestment || 0)}</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatCurrency(topData.finalValue)}
+                    </p>
+                  </div>
+                  
+                  <div className="bg-white p-4 border-l-4 border-purple-600 shadow-sm">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Time Period</p>
+                    <p className="text-sm text-gray-600">{results.parameters?.endYear - results.parameters?.startYear + 1} Years</p>
+                    <p className="text-2xl font-bold text-gray-900 mt-2">
+                      {formatPercentage(topData.annualizedReturn)}
+                    </p>
+                    <p className="text-xs text-gray-500">Annualized</p>
+                  </div>
+                </>
               )
-            })}
-          </tbody>
-        </table>
+            })()}
+          </div>
+
+          {/* Strategy Comparison Table - Fidelity Style */}
+          <div className="p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+              Strategy Performance Comparison
+            </h3>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-gray-500 border-b border-gray-200">
+                    <th className="text-left py-3 px-2 font-medium">Strategy</th>
+                    <th className="text-right py-3 px-2 font-medium">Total Return</th>
+                    <th className="text-right py-3 px-2 font-medium">Annual Return</th>
+                    <th className="text-right py-3 px-2 font-medium">Final Value</th>
+                    <th className="text-right py-3 px-2 font-medium">Gain/Loss</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strategies.map((strategy, index) => {
+                    const data = results[strategy.key]
+                    if (!data) return null
+                    
+                    const gain = data.finalValue - (results.parameters?.initialInvestment || 0)
+                    const isTop = getTopPerformer() === strategy.key
+
+                    return (
+                      <tr key={strategy.key} className={`border-b border-gray-100 hover:bg-gray-50 ${isTop ? 'bg-green-50' : ''}`}>
+                        <td className="py-3 px-2">
+                          <div className="flex items-center">
+                            {isTop && <div className="w-2 h-8 bg-green-600 rounded-r mr-2"></div>}
+                            <div>
+                              <p className="font-medium text-gray-900 text-sm">{strategy.name}</p>
+                              <p className="text-xs text-gray-500">{strategy.icon}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <span className={`font-mono font-semibold ${data.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {data.totalReturn >= 0 ? '+' : ''}{formatPercentage(data.totalReturn)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <span className={`font-mono ${data.annualizedReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {data.annualizedReturn >= 0 ? '+' : ''}{formatPercentage(data.annualizedReturn)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-right font-mono font-semibold text-gray-900">
+                          {formatCurrency(data.finalValue)}
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <span className={`font-mono font-semibold ${gain >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {gain >= 0 ? '+' : ''}{formatCurrency(gain)}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
-      {/* Interactive Performance Chart */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <div className="flex items-center space-x-3 mb-6">
-          <span className="text-2xl">📈</span>
-          <h3 className="text-xl font-semibold text-gray-900">Portfolio Performance Comparison</h3>
-        </div>
-        
-        <div className="h-96">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={generateChartData()}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis 
-                dataKey="year" 
-                stroke="#6b7280"
-                fontSize={12}
-              />
-              <YAxis 
-                tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
-                stroke="#6b7280"
-                fontSize={12}
-              />
-              <Tooltip 
-                formatter={(value: number) => [formatCurrency(value), '']}
-                labelFormatter={(year) => `Year: ${year}`}
-                contentStyle={{
-                  backgroundColor: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px'
-                }}
-              />
-              <Legend />
+          {/* Interactive Performance Chart - Fidelity Style */}
+          <div className="border-t border-gray-200">
+            <div className="p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 border-b border-gray-200 pb-2">
+                Portfolio Performance Over Time
+              </h3>
               
-              {/* Strategy Lines */}
-              <Line 
-                type="monotone" 
-                dataKey="equalWeightBuyHold" 
-                stroke="#10b981" 
-                strokeWidth={getTopPerformer() === 'equalWeightBuyHold' ? 3 : 2}
-                name="Equal Weight Buy & Hold" 
-                dot={{ r: 4 }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="marketCapBuyHold" 
-                stroke="#3b82f6" 
-                strokeWidth={getTopPerformer() === 'marketCapBuyHold' ? 3 : 2}
-                name="Market Cap Buy & Hold" 
-                dot={{ r: 4 }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="equalWeightRebalanced" 
-                stroke="#8b5cf6" 
-                strokeWidth={getTopPerformer() === 'equalWeightRebalanced' ? 3 : 2}
-                name="Equal Weight Rebalanced" 
-                dot={{ r: 4 }}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="marketCapRebalanced" 
-                stroke="#f59e0b" 
-                strokeWidth={getTopPerformer() === 'marketCapRebalanced' ? 3 : 2}
-                name="Market Cap Rebalanced" 
-                dot={{ r: 4 }}
-              />
+              <div className="h-80 bg-gray-50 rounded p-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={generateChartData()}>
+                    <CartesianGrid strokeDasharray="2 2" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="year" 
+                      stroke="#6b7280"
+                      fontSize={11}
+                      tick={{ fill: '#6b7280' }}
+                    />
+                    <YAxis 
+                      tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
+                      stroke="#6b7280"
+                      fontSize={11}
+                      tick={{ fill: '#6b7280' }}
+                    />
+                    <Tooltip 
+                      formatter={(value: number) => [formatCurrency(value), '']}
+                      labelFormatter={(year) => `Year: ${year}`}
+                      contentStyle={{
+                        backgroundColor: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '20px' }}
+                      iconType="line"
+                    />
+                    
+                    {/* Strategy Lines - Fidelity Colors */}
+                    <Line 
+                      type="monotone" 
+                      dataKey="equalWeightBuyHold" 
+                      stroke="#16a34a" 
+                      strokeWidth={getTopPerformer() === 'equalWeightBuyHold' ? 3 : 2}
+                      name="Equal Weight Buy & Hold" 
+                      dot={{ r: 3, fill: '#16a34a' }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="marketCapBuyHold" 
+                      stroke="#2563eb" 
+                      strokeWidth={getTopPerformer() === 'marketCapBuyHold' ? 3 : 2}
+                      name="Market Cap Buy & Hold" 
+                      dot={{ r: 3, fill: '#2563eb' }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="equalWeightRebalanced" 
+                      stroke="#8b5cf6" 
+                      strokeWidth={getTopPerformer() === 'equalWeightRebalanced' ? 3 : 2}
+                      name="Equal Weight Rebalanced" 
+                      dot={{ r: 3, fill: '#8b5cf6' }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="marketCapRebalanced" 
+                      stroke="#f59e0b" 
+                      strokeWidth={getTopPerformer() === 'marketCapRebalanced' ? 3 : 2}
+                      name="Market Cap Rebalanced" 
+                      dot={{ r: 3, fill: '#f59e0b' }}
+                      activeDot={{ r: 5 }}
+                    />
+                    
+                    {/* SPY Benchmark - Dashed line */}
+                    <Line 
+                      type="monotone" 
+                      dataKey="spyBenchmark" 
+                      stroke="#dc2626" 
+                      strokeWidth={2}
+                      name="SPY Benchmark" 
+                      dot={{ r: 3, fill: '#dc2626' }}
+                      activeDot={{ r: 5 }}
+                      strokeDasharray="5 5"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
               
-              {/* SPY Benchmark - Always thick line */}
-              <Line 
-                type="monotone" 
-                dataKey="spyBenchmark" 
-                stroke="#ef4444" 
-                strokeWidth={3}
-                name="SPY Benchmark" 
-                dot={{ r: 5 }}
-                strokeDasharray="5 5"
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-        
-        <div className="mt-4 text-sm text-gray-600 flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-0.5 bg-red-500" style={{ borderStyle: 'dashed' }}></div>
-            <span>SPY Benchmark (thicker dashed line)</span>
+              {/* Chart Legend */}
+              <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-600">
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-0.5 bg-red-600" style={{ borderTop: '2px dashed #dc2626' }}></div>
+                  <span>SPY Benchmark</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-4 h-0.5 bg-gray-600"></div>
+                  <span>Top performer shown with thicker line</span>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-0.5 bg-gray-400"></div>
-            <span>Top performer highlighted with thicker line</span>
-          </div>
-        </div>
-      </div>
 
-      {/* Last Year Performance Tables */}
-      <div className="bg-white rounded-lg border p-6 mb-6">
-        <div className="flex items-center justify-between mb-6">
+          {/* Key Statistics Section - Fidelity Style */}
+          <div className="border-t border-gray-200 bg-gray-50 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Key Performance Metrics
+            </h3>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {(() => {
+                const params = results.parameters || {}
+                const years = (params.endYear - params.startYear) || 1
+                const topData = results[getTopPerformer()]
+                
+                return (
+                  <>
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900">{params.tickerCount || 0}</p>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Securities</p>
+                    </div>
+                    
+                    <div className="text-center">
+                      <p className="text-2xl font-bold text-gray-900">{years}</p>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Years</p>
+                    </div>
+                    
+                    <div className="text-center">
+                      <p className={`text-2xl font-bold ${topData?.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {topData ? formatPercentage(topData.totalReturn) : '—'}
+                      </p>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Best Total Return</p>
+                    </div>
+                    
+                    <div className="text-center">
+                      <p className={`text-2xl font-bold ${topData?.annualizedReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {topData ? formatPercentage(topData.annualizedReturn) : '—'}
+                      </p>
+                      <p className="text-xs text-gray-600 uppercase tracking-wide">Annualized</p>
+                    </div>
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'holdings' ? (
+        <div className="p-6">
           <div className="flex items-center space-x-3">
             <span className="text-2xl">📊</span>
             <h3 className="text-xl font-semibold text-gray-900">Last Year Performance by Strategy</h3>
