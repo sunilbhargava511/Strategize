@@ -386,90 +386,87 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       validatedTickers.push(cleanTicker);
     }
     
-    // First, get the list of all valid US tickers from EODHD (active and delisted)
-    console.log(`\n📋 VALIDATING TICKERS WITH EODHD EXCHANGE LISTS...`);
-    const tickerLists = await getValidUSTickers(false);
+    // Validate tickers against cache instead of EODHD exchange lists
+    console.log(`\n📋 VALIDATING TICKERS AGAINST CACHE...`);
     
     const finalValidTickers: string[] = [];
     const problemTickers: string[] = [];
     
-    // Quick validation using exchange lists first
+    // Check cache coverage for all tickers
+    const { missing: missingFromCache, eliminated: eliminatedFromCache } = await validateCacheCoverage(validatedTickers);
+    
+    // Process each ticker
     for (const ticker of validatedTickers) {
-      if (tickerLists) {
-        // Check if ticker exists in either active or delisted lists
-        if (tickerLists.active.has(ticker)) {
-          // Ticker is actively traded
-          const validationResult = tickerValidationResults.find(r => 
-            r.ticker === ticker || r.correctedTo === ticker
-          );
-          
-          if (!validationResult) {
-            tickerValidationResults.push({
-              ticker: ticker,
-              status: 'valid',
-              message: `Active US exchange ticker`,
-              hasHistoricalData: true
-            });
-          } else if (validationResult) {
-            validationResult.status = 'valid';
-            validationResult.message = `Active US exchange ticker`;
-            validationResult.hasHistoricalData = true;
-          }
-          
-          finalValidTickers.push(ticker);
-          console.log(`   ✓ ${ticker} - Active ticker`);
-        } else if (tickerLists.delisted.has(ticker)) {
-          // Ticker is delisted but should have historical data
-          const validationResult = tickerValidationResults.find(r => 
-            r.ticker === ticker || r.correctedTo === ticker
-          );
-          
-          if (!validationResult) {
-            tickerValidationResults.push({
-              ticker: ticker,
-              status: 'valid',
-              message: `Delisted ticker (historical data available)`,
-              hasHistoricalData: true
-            });
-          } else if (validationResult) {
-            validationResult.status = 'valid';
-            validationResult.message = `Delisted ticker (historical data available)`;
-            validationResult.hasHistoricalData = true;
-          }
-          
-          finalValidTickers.push(ticker);
-          console.log(`   ⚠️ ${ticker} - Delisted ticker (historical data should be available)`);
+      if (missingFromCache.includes(ticker)) {
+        // Ticker not in cache
+        problemTickers.push(ticker);
+        
+        const validationResult = tickerValidationResults.find(r => 
+          r.ticker === ticker || r.correctedTo === ticker
+        );
+        
+        if (validationResult) {
+          validationResult.status = 'no_data';
+          validationResult.message = `Not found in cache`;
+          validationResult.hasHistoricalData = false;
         } else {
-          // Ticker not in either list - probably invalid
-          problemTickers.push(ticker);
-          
-          const validationResult = tickerValidationResults.find(r => 
-            r.ticker === ticker || r.correctedTo === ticker
-          );
-          
-          if (validationResult) {
-            validationResult.status = 'no_data';
-            validationResult.message = `Not found in active or delisted US ticker lists`;
-            validationResult.hasHistoricalData = false;
-          } else {
-            tickerValidationResults.push({
-              ticker: ticker,
-              status: 'no_data',
-              message: `Invalid ticker - not in EODHD database`,
-              hasHistoricalData: false
-            });
-          }
-          
-          console.log(`   ✗ ${ticker} - Not found in EODHD database`);
+          tickerValidationResults.push({
+            ticker: ticker,
+            status: 'no_data',
+            message: `Not found in cache`,
+            hasHistoricalData: false
+          });
         }
+        
+        console.log(`   ✗ ${ticker} - Not found in cache`);
+      } else if (eliminatedFromCache.find(e => e.ticker === ticker)) {
+        // Ticker eliminated due to data quality issues
+        const elimination = eliminatedFromCache.find(e => e.ticker === ticker);
+        problemTickers.push(ticker);
+        
+        const validationResult = tickerValidationResults.find(r => 
+          r.ticker === ticker || r.correctedTo === ticker
+        );
+        
+        if (validationResult) {
+          validationResult.status = 'no_data';
+          validationResult.message = `Eliminated: ${elimination?.reason}`;
+          validationResult.hasHistoricalData = false;
+        } else {
+          tickerValidationResults.push({
+            ticker: ticker,
+            status: 'no_data',
+            message: `Eliminated: ${elimination?.reason}`,
+            hasHistoricalData: false
+          });
+        }
+        
+        console.log(`   ✗ ${ticker} - Eliminated: ${elimination?.reason}`);
       } else {
-        // Couldn't get exchange lists, fall back to checking each ticker individually
+        // Ticker is available in cache
+        const validationResult = tickerValidationResults.find(r => 
+          r.ticker === ticker || r.correctedTo === ticker
+        );
+        
+        if (!validationResult) {
+          tickerValidationResults.push({
+            ticker: ticker,
+            status: 'valid',
+            message: `Available in cache`,
+            hasHistoricalData: true
+          });
+        } else if (validationResult) {
+          validationResult.status = 'valid';
+          validationResult.message = `Available in cache`;
+          validationResult.hasHistoricalData = true;
+        }
+        
         finalValidTickers.push(ticker);
-        console.log(`   ? ${ticker} - Unable to verify (exchange lists unavailable)`);
+        console.log(`   ✓ ${ticker} - Available in cache`);
       }
     }
     
-    // Note: Bypass cache mode has been removed - only tickers in EODHD exchange lists are allowed
+    // Note: Validation now checks against cache instead of EODHD exchange lists for backtesting
     
     // Log validation summary
     console.log(`\n✅ TICKER VALIDATION COMPLETE: ${finalValidTickers.length}/${tickers.length} valid tickers`);
