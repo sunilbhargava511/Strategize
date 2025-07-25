@@ -638,7 +638,7 @@ export default function Home() {
                 <span>{leftPanelCollapsed ? 'Show Setup' : 'Hide Setup'}</span>
               </button>
               
-              <div className="bg-white rounded-2xl shadow-sm p-6 min-h-[600px] flex items-center justify-center">
+              <div className={`bg-white rounded-2xl shadow-sm ${leftPanelCollapsed ? 'p-8' : 'p-6'} min-h-[600px] flex items-center justify-center`}>
                 {!showResults ? (
                   <div className="text-center space-y-4">
                     {isRunning && currentProgress.phase ? (
@@ -690,9 +690,9 @@ export default function Home() {
                     )}
                   </div>
                 ) : (
-                  <div className="w-full space-y-4">
+                  <div className={`w-full ${leftPanelCollapsed ? 'space-y-6' : 'space-y-4'}`}>
                     {/* Export Controls */}
-                    <div className="flex items-center justify-between pb-4 border-b border-gray-200">
+                    <div className={`flex items-center justify-between pb-4 border-b border-gray-200 ${leftPanelCollapsed ? 'mb-6' : ''}`}>
                       <div className="flex items-center gap-2">
                         <h3 className="text-xl font-semibold text-gray-900">
                           Analysis Results
@@ -732,7 +732,7 @@ export default function Home() {
                         {leftPanelCollapsed && <span className="text-sm font-normal text-gray-500">(Full Screen)</span>}
                       </div>
                       {/* Fidelity-style Action Bar */}
-                      <div className="flex items-center space-x-2">
+                      <div className={`flex items-center space-x-2 ${leftPanelCollapsed ? 'flex-wrap gap-2' : ''}`}>
                         <button
                           onClick={handleExportResults}
                           className="flex items-center space-x-2 px-3 py-2 bg-green-700 hover:bg-green-800 text-white rounded-md transition-colors text-sm font-medium shadow-sm"
