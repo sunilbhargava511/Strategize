@@ -123,6 +123,7 @@ export default function BatchJobManager({ isOpen, onClose }: BatchJobManagerProp
   const canContinue = jobStatus && 
     jobStatus.status !== 'completed' && 
     jobStatus.status !== 'failed' &&
+    jobStatus.status !== 'running' &&
     jobStatus.progress.processed < jobStatus.progress.total
 
   useEffect(() => {
