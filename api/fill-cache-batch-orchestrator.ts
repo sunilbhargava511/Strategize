@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const startTime = Date.now();
   
   try {
-    const { jobId, maxBatches = 10 } = req.body; // Process up to 10 batches per invocation
+    const { jobId } = req.body; // Process until Vercel timeout
 
     if (!jobId) {
       return res.status(400).json({ 
@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    logger.info(`🎯 ORCHESTRATOR START: Processing up to ${maxBatches} batches for job ${jobId}`);
+    logger.info(`🎯 ORCHESTRATOR START: Processing batches until timeout for job ${jobId}`);
 
     // Get the batch job
     let job = await getBatchJob(jobId);
@@ -77,15 +77,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     let batchesProcessed = 0;
-    const maxExecutionTime = 240000; // 4 minutes max (leaving 1 minute buffer for 5 min timeout)
-    const orchStartTime = Date.now();
 
-    // Process multiple batches in a loop
-    while (
-      batchesProcessed < maxBatches && 
-      job.currentBatch < job.totalBatches &&
-      (Date.now() - orchStartTime) < maxExecutionTime
-    ) {
+    // Process batches until Vercel times us out at 5 minutes
+    while (job.currentBatch < job.totalBatches) {
       
       // Get current batch tickers
       const batchTickers = getCurrentBatchTickers(job);
@@ -150,24 +144,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const totalDuration = Date.now() - startTime;
     const isComplete = job.status === 'completed' || job.currentBatch >= job.totalBatches;
 
-    // If not complete and still have time, schedule next orchestration
+    // If not complete, schedule next orchestration (Vercel likely timed us out)
     let nextOrchestration = null;
-    if (!isComplete && (Date.now() - orchStartTime) < maxExecutionTime) {
+    if (!isComplete) {
       nextOrchestration = {
         scheduledFor: new Date(Date.now() + 5000).toISOString(), // 5 seconds from now
-        message: 'Next orchestration will automatically start'
+        message: 'Next orchestration will automatically start (likely hit 5min Vercel timeout)'
       };
 
       // Schedule next orchestration
       setTimeout(async () => {
         try {
           const continueUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-orchestrator`;
-          logger.info(`🔄 ORCHESTRATOR CONTINUE: Scheduling next orchestration for job ${jobId}`);
+          logger.info(`🔄 ORCHESTRATOR TIMEOUT RECOVERY: Scheduling next orchestration for job ${jobId}`);
           
           const response = await fetch(continueUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId, maxBatches })
+            body: JSON.stringify({ jobId })
           });
           
           if (!response.ok) {
@@ -198,7 +192,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       duration: totalDuration,
       message: isComplete ? 
         `Job completed! Processed all ${job.totalTickers} tickers` : 
-        `Processed ${batchesProcessed} batches. ${job.totalBatches - job.currentBatch} batches remaining.`,
+        `Processed ${batchesProcessed} batches until timeout. ${job.totalBatches - job.currentBatch} batches remaining.`,
       nextOrchestration
     });
 

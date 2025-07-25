@@ -11,8 +11,7 @@ fetch('/api/fill-cache-batch-orchestrator', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ 
-    jobId: 'batch_job_mdi5saxn_2kxca', 
-    maxBatches: 10 
+    jobId: 'batch_job_mdi5saxn_2kxca'
   })
 })
 .then(r => r.json())
@@ -27,9 +26,9 @@ fetch('/api/fill-cache-batch-orchestrator', {
 ```
 
 The orchestrator will:
-- Process up to 10 batches in one go (about 25-30 minutes)
-- Automatically schedule the next orchestration if needed
-- Be more reliable than the single-batch approach
+- Process batches continuously until Vercel's 5-minute timeout
+- Automatically schedule the next orchestration if more batches remain
+- Handle ~7-8 batches per run (35+ tickers)
 
 ## Option 2: Use the Legacy Continue (Not Recommended)
 

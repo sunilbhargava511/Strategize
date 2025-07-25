@@ -150,7 +150,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Auto-start first batch if requested and there are batches to process
     if (startImmediately && batchJob.totalBatches > 0) {
       logger.info(`🔄 AUTO-START: Scheduling orchestrator for job ${batchJob.jobId} in 1 second...`);
-      logger.info(`🎯 AUTO-START TARGET: Will process up to 10 batches at a time from ${batchJob.totalBatches} total batches`);
+      logger.info(`🎯 AUTO-START TARGET: Will process until Vercel timeout from ${batchJob.totalBatches} total batches`);
       
       // Start orchestrator with a small delay
       setTimeout(async () => {
@@ -162,8 +162,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-              jobId: batchJob.jobId, 
-              maxBatches: 10 // Process up to 10 batches per orchestration
+              jobId: batchJob.jobId
             })
           });
           
