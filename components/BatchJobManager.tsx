@@ -80,6 +80,19 @@ export default function BatchJobManager({ isOpen, onClose }: BatchJobManagerProp
         body: JSON.stringify({ jobId: jobId.trim() })
       })
       
+      // Check for authentication issues
+      if (response.status === 401 || response.status === 403) {
+        setError('Authentication required. Please refresh the page and try again.')
+        return
+      }
+      
+      // Check for other errors (but 504 is expected)
+      if (response.status !== 504 && !response.ok) {
+        const errorText = await response.text()
+        setError(`HTTP ${response.status}: ${errorText}`)
+        return
+      }
+      
       // Don't check response.ok because 504 is expected
       if (response.status !== 504) {
         const data = await response.json()
