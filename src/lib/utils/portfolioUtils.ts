@@ -107,6 +107,7 @@ export function rebalancePortfolio(
     // Calculate required shares for target value
     const targetShares = Math.floor(targetValue / currentPrice.adjustedPrice);
     const sharesDiff = targetShares - currentShares;
+    let actualSharesTraded = 0;
 
     if (sharesDiff !== 0) {
       const tradeValue = Math.abs(sharesDiff) * currentPrice.adjustedPrice;
@@ -115,6 +116,7 @@ export function rebalancePortfolio(
         // Buy shares
         if (remainingCash >= tradeValue) {
           remainingCash -= tradeValue;
+          actualSharesTraded = sharesDiff;
           trades.push({
             ticker: stock.ticker,
             action: 'buy',
@@ -128,6 +130,7 @@ export function rebalancePortfolio(
           if (affordableShares > 0) {
             const affordableValue = affordableShares * currentPrice.adjustedPrice;
             remainingCash -= affordableValue;
+            actualSharesTraded = affordableShares;
             trades.push({
               ticker: stock.ticker,
               action: 'buy',
@@ -140,6 +143,7 @@ export function rebalancePortfolio(
       } else {
         // Sell shares
         remainingCash += tradeValue;
+        actualSharesTraded = sharesDiff; // Negative for sells
         trades.push({
           ticker: stock.ticker,
           action: 'sell',
@@ -150,9 +154,8 @@ export function rebalancePortfolio(
       }
     }
 
-    // Update holdings
-    const finalShares = currentShares + (sharesDiff > 0 ? 
-      Math.min(sharesDiff, Math.floor(remainingCash / currentPrice.adjustedPrice)) : sharesDiff);
+    // Update holdings using actual shares traded
+    const finalShares = currentShares + actualSharesTraded;
     
     if (finalShares > 0) {
       newHoldings.push({
