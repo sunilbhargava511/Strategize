@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    logger.info(`🎯 ORCHESTRATOR START: Processing batches until timeout for job ${jobId}`);
+    logger.success(`🎯 ORCHESTRATOR START: Processing batches until timeout for job ${jobId}`);
 
     // Get the batch job
     let job = await getBatchJob(jobId);
@@ -89,7 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const batchStartTime = Date.now();
-      logger.info(`🚀 BATCH ${job.currentBatch + 1}/${job.totalBatches}: Processing [${batchTickers.join(', ')}]`);
+      logger.success(`🚀 BATCH ${job.currentBatch + 1}/${job.totalBatches}: Processing [${batchTickers.join(', ')}]`);
 
       // Update job status
       job.status = 'running';
@@ -99,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         // Process the current batch
         const results = await fillCacheWithProgress(batchTickers, (progress) => {
-          logger.info(`📊 Progress: ${progress.processed}/${progress.total} (${progress.percentage.toFixed(1)}%)`);
+          logger.success(`📊 Progress: ${progress.processed}/${progress.total} (${progress.percentage.toFixed(1)}%)`);
         });
 
         const batchDuration = Date.now() - batchStartTime;

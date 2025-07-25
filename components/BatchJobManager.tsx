@@ -17,6 +17,9 @@ interface BatchJobStatus {
     remaining: number
   }
   message: string
+  startTime?: string
+  processingStartTime?: string
+  lastUpdate?: string
 }
 
 interface BatchJobManagerProps {
@@ -243,6 +246,33 @@ export default function BatchJobManager({ isOpen, onClose }: BatchJobManagerProp
                   </div>
                 </div>
               </div>
+
+              {/* Timing Information */}
+              {(jobStatus.startTime || jobStatus.processingStartTime) && (
+                <div className="bg-blue-50 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-blue-900 mb-2">Timing</h4>
+                  <div className="space-y-2 text-sm text-blue-800">
+                    {jobStatus.startTime && (
+                      <div>
+                        <span className="font-medium">Job Created:</span>
+                        <span className="ml-2">{new Date(jobStatus.startTime).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {jobStatus.processingStartTime && (
+                      <div>
+                        <span className="font-medium text-green-800">Processing Started:</span>
+                        <span className="ml-2 text-green-800">{new Date(jobStatus.processingStartTime).toLocaleString()}</span>
+                      </div>
+                    )}
+                    {jobStatus.lastUpdate && (
+                      <div>
+                        <span className="font-medium">Last Update:</span>
+                        <span className="ml-2">{new Date(jobStatus.lastUpdate).toLocaleString()}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Message */}
               {jobStatus.message && (

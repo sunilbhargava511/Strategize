@@ -18,6 +18,7 @@ export interface BatchJob {
   batchSize: number;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'paused';
   startTime: string;
+  processingStartTime?: string;
   lastUpdate: string;
   failedTickers: Array<{
     ticker: string;
@@ -174,6 +175,11 @@ export async function updateBatchProgress(
     logger.success(`🎉 Batch job ${jobId} completed! ${job.successful} successful, ${job.failed} failed`);
   } else {
     job.status = 'running';
+    // Set processing start time if this is the first time going to 'running' status
+    if (!job.processingStartTime) {
+      job.processingStartTime = new Date().toISOString();
+      logger.success(`🟢 PROCESSING STARTED: Job ${jobId} began processing at ${job.processingStartTime}`);
+    }
   }
 
   // Calculate estimated time remaining

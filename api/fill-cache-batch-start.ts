@@ -149,14 +149,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Auto-start first batch if requested and there are batches to process
     if (startImmediately && batchJob.totalBatches > 0) {
-      logger.info(`🔄 AUTO-START: Scheduling orchestrator for job ${batchJob.jobId} in 1 second...`);
-      logger.info(`🎯 AUTO-START TARGET: Will process until Vercel timeout from ${batchJob.totalBatches} total batches`);
+      logger.success(`🔄 AUTO-START: Scheduling orchestrator for job ${batchJob.jobId} in 1 second...`);
+      logger.success(`🎯 AUTO-START TARGET: Will process until Vercel timeout from ${batchJob.totalBatches} total batches`);
       
       // Start orchestrator with a small delay
       setTimeout(async () => {
         try {
           const orchestratorUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-orchestrator`;
-          logger.info(`🔗 AUTO-START TRIGGER: Calling orchestrator at ${orchestratorUrl} for job ${batchJob.jobId}`);
+          logger.success(`🔗 AUTO-START TRIGGER: Calling orchestrator at ${orchestratorUrl} for job ${batchJob.jobId}`);
           
           const orchestratorResponse = await fetch(orchestratorUrl, {
             method: 'POST',
@@ -171,7 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             logger.error(`🚨 BATCH JOB STALLED: Failed to auto-start orchestrator for job ${batchJob.jobId}`);
           } else {
             logger.success(`✅ AUTO-START SUCCESS: Job ${batchJob.jobId} - Orchestrator triggered successfully`);
-            logger.info(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running with reliable orchestration`);
+            logger.success(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running with reliable orchestration`);
           }
         } catch (error: any) {
           logger.error(`💥 AUTO-START ERROR: Job ${batchJob.jobId} - ${error.message || 'Unknown error'}`);
@@ -180,7 +180,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }, 1000); // 1 second delay
 
       response.message += ' - orchestrator starting automatically';
-      logger.info(`📋 AUTO-START QUEUED: Job ${batchJob.jobId} will begin processing with orchestrator`);
+      logger.success(`📋 AUTO-START QUEUED: Job ${batchJob.jobId} will begin processing with orchestrator`);
     } else if (batchJob.totalBatches === 0) {
       logger.success(`🎉 NO PROCESSING NEEDED: All tickers already cached for job ${batchJob.jobId}`);
     } else {
