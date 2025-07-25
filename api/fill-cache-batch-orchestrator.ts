@@ -7,6 +7,7 @@ import {
   updateBatchProgress, 
   getCurrentBatchTickers,
   markJobFailed,
+  updateBatchJob,
   BATCH_CONSTANTS 
 } from './_batchProcessing';
 import { fillCacheWithProgress } from './data/dataProcessing';
@@ -144,35 +145,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const totalDuration = Date.now() - startTime;
     const isComplete = job.status === 'completed' || job.currentBatch >= job.totalBatches;
 
-    // If not complete, schedule next orchestration (Vercel likely timed us out)
+    // If not complete, set job to 'paused' status so it can be manually continued
     let nextOrchestration = null;
     if (!isComplete) {
+      // Update job status to 'paused' when orchestrator times out
+      job.status = 'paused';
+      job.lastUpdate = new Date().toISOString();
+      await updateBatchJob(job);
+      
+      logger.success(`⏸️ ORCHESTRATOR PAUSED: Job ${jobId} paused after processing ${batchesProcessed} batches (${totalDuration}ms)`);
+      logger.success(`🔄 MANUAL RESTART NEEDED: Use Continue Processing button to resume job ${jobId}`);
+      
       nextOrchestration = {
-        scheduledFor: new Date(Date.now() + 5000).toISOString(), // 5 seconds from now
-        message: 'Next orchestration will automatically start (likely hit 5min Vercel timeout)'
+        scheduledFor: 'Manual restart required',
+        message: 'Job paused due to Vercel timeout. Use Continue Processing button to resume.'
       };
-
-      // Schedule next orchestration
-      setTimeout(async () => {
-        try {
-          const continueUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-orchestrator`;
-          logger.info(`🔄 ORCHESTRATOR TIMEOUT RECOVERY: Scheduling next orchestration for job ${jobId}`);
-          
-          const response = await fetch(continueUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ jobId })
-          });
-          
-          if (!response.ok) {
-            logger.error(`❌ ORCHESTRATOR FAILED: Job ${jobId} - HTTP ${response.status}`);
-          } else {
-            logger.success(`✅ ORCHESTRATOR SCHEDULED: Job ${jobId}`);
-          }
-        } catch (error: any) {
-          logger.error(`💥 ORCHESTRATOR ERROR: Job ${jobId} - ${error.message}`);
-        }
-      }, 5000);
     }
 
     return res.status(200).json({
