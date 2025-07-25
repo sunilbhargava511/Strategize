@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logger.info(`🎯 ORCHESTRATOR START: Processing up to ${maxBatches} batches for job ${jobId}`);
 
     // Get the batch job
-    const job = await getBatchJob(jobId);
+    let job = await getBatchJob(jobId);
     if (!job) {
       return res.status(404).json({
         error: 'Batch job not found',
