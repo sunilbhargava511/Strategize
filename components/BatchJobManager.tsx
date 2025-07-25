@@ -31,6 +31,16 @@ export default function BatchJobManager({ isOpen, onClose }: BatchJobManagerProp
   const [error, setError] = useState<string | null>(null)
   const [continuing, setContinuing] = useState(false)
 
+  // Load job ID from localStorage when component opens
+  useEffect(() => {
+    if (isOpen) {
+      const storedJobId = localStorage.getItem('lastBatchJobId')
+      if (storedJobId && !jobId) {
+        setJobId(storedJobId)
+      }
+    }
+  }, [isOpen, jobId])
+
   const checkJobStatus = async () => {
     if (!jobId.trim()) return
     

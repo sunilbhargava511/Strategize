@@ -154,6 +154,19 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
 
       if (!response.ok) throw new Error('Fill cache failed')
 
+      // Check if this is a batch job response (status 202)
+      if (response.status === 202) {
+        const batchData = await response.json()
+        if (batchData.jobId) {
+          // Save the job ID to localStorage for easy access in Batch Job Manager
+          localStorage.setItem('lastBatchJobId', batchData.jobId)
+          console.log('📝 Saved batch job ID to localStorage:', batchData.jobId)
+          
+          alert(`Batch job created: ${batchData.jobId}\n\nProcessing ${batchData.batchInfo.tickersToProcess} tickers in ${batchData.batchInfo.totalBatches} batches.\n\nUse the "Batch Jobs" button to monitor progress!`)
+          return
+        }
+      }
+
       const reader = response.body?.getReader()
       if (!reader) throw new Error('No response stream')
 
