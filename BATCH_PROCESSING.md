@@ -80,7 +80,7 @@ The batch processing system allows you to efficiently cache historical data for 
 }
 ```
 
-### 3. Continue Batch (Manual)
+### 3. Continue Batch (Manual) - Legacy
 
 **Endpoint**: `POST /api/fill-cache-batch-continue`
 
@@ -89,6 +89,20 @@ The batch processing system allows you to efficiently cache historical data for 
 {
   "jobId": "batch_job_12345",
   "autoContinue": true
+}
+```
+
+**Note**: This endpoint processes one batch at a time and may fail with auto-continuation. Use the orchestrator instead for reliable processing.
+
+### 3a. Batch Orchestrator (Recommended)
+
+**Endpoint**: `POST /api/fill-cache-batch-orchestrator`
+
+**Body**:
+```json
+{
+  "jobId": "batch_job_12345",
+  "maxBatches": 10
 }
 ```
 

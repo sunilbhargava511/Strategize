@@ -149,30 +149,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Auto-start first batch if requested and there are batches to process
     if (startImmediately && batchJob.totalBatches > 0) {
-      logger.info(`🔄 AUTO-START: Scheduling first batch for job ${batchJob.jobId} in 1 second...`);
-      logger.info(`🎯 AUTO-START TARGET: Will process first ${batchJob.batchSize} tickers from total ${batchJob.tickersToProcess.length}`);
+      logger.info(`🔄 AUTO-START: Scheduling orchestrator for job ${batchJob.jobId} in 1 second...`);
+      logger.info(`🎯 AUTO-START TARGET: Will process up to 10 batches at a time from ${batchJob.totalBatches} total batches`);
       
-      // Start first batch with a small delay
+      // Start orchestrator with a small delay
       setTimeout(async () => {
         try {
-          const continueUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-continue`;
-          logger.info(`🔗 AUTO-START TRIGGER: Calling ${continueUrl} for job ${batchJob.jobId}`);
+          const orchestratorUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/fill-cache-batch-orchestrator`;
+          logger.info(`🔗 AUTO-START TRIGGER: Calling orchestrator at ${orchestratorUrl} for job ${batchJob.jobId}`);
           
-          const continueResponse = await fetch(continueUrl, {
+          const orchestratorResponse = await fetch(orchestratorUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
               jobId: batchJob.jobId, 
-              autoContinue: true 
+              maxBatches: 10 // Process up to 10 batches per orchestration
             })
           });
           
-          if (!continueResponse.ok) {
-            logger.error(`❌ AUTO-START FAILED: Job ${batchJob.jobId} - HTTP ${continueResponse.status}`);
-            logger.error(`🚨 BATCH JOB STALLED: Failed to auto-start job ${batchJob.jobId}`);
+          if (!orchestratorResponse.ok) {
+            logger.error(`❌ AUTO-START FAILED: Job ${batchJob.jobId} - HTTP ${orchestratorResponse.status}`);
+            logger.error(`🚨 BATCH JOB STALLED: Failed to auto-start orchestrator for job ${batchJob.jobId}`);
           } else {
-            logger.success(`✅ AUTO-START SUCCESS: Job ${batchJob.jobId} - First batch triggered successfully`);
-            logger.info(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running automatically`);
+            logger.success(`✅ AUTO-START SUCCESS: Job ${batchJob.jobId} - Orchestrator triggered successfully`);
+            logger.info(`🏃‍♂️ BATCH PROCESSING: Job ${batchJob.jobId} is now running with reliable orchestration`);
           }
         } catch (error: any) {
           logger.error(`💥 AUTO-START ERROR: Job ${batchJob.jobId} - ${error.message || 'Unknown error'}`);
@@ -180,8 +180,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
       }, 1000); // 1 second delay
 
-      response.message += ' - first batch starting automatically';
-      logger.info(`📋 AUTO-START QUEUED: Job ${batchJob.jobId} will begin processing automatically`);
+      response.message += ' - orchestrator starting automatically';
+      logger.info(`📋 AUTO-START QUEUED: Job ${batchJob.jobId} will begin processing with orchestrator`);
     } else if (batchJob.totalBatches === 0) {
       logger.success(`🎉 NO PROCESSING NEEDED: All tickers already cached for job ${batchJob.jobId}`);
     } else {
