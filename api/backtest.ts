@@ -513,15 +513,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (finalValidTickers.length > 100) {
       console.log(`⚡ Large portfolio detected - using optimized batching strategy`);
     }
-    
-    // Check cache first (unless bypassed)
-    const tickerString = processedTickers.sort().join(',');
-    const cacheKey = `backtest:${startYear}:${endYear}:${initialInvestment}:${tickerString}`;
-    const cached = await cache.get(cacheKey);
-    if (cached) {
-      logger.info('Returning cached backtest results');
-      return res.status(200).json({ ...cached, from_cache: true });
-    }
 
     // Check if we have EODHD API token
     if (!process.env.EODHD_API_TOKEN) {
@@ -577,6 +568,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const finalAllTickersNeeded = ['SPY', ...processedTickers];
     
     console.log(`✅ CACHE VALIDATION COMPLETE: All ${finalAllTickersNeeded.length} tickers are cached`);
+    
+    // Check cache first (after ticker elimination to ensure correct cache key)
+    const tickerString = processedTickers.sort().join(',');
+    const cacheKey = `backtest:${tickerString}:${startYear}:${endYear}:${initialInvestment}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      logger.info('Returning cached backtest results');
+      return res.status(200).json({ ...cached, from_cache: true });
+    }
     
     // Load data from cache into runtime structure
     console.log(`\n📊 DATA LOADING PHASE: Loading ticker data from cache...`);

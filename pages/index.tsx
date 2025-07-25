@@ -319,7 +319,8 @@ export default function Home() {
       clearInterval(progressInterval);
 
       if (!response.ok) {
-        throw new Error('Analysis failed')
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || errorData.message || 'Analysis failed')
       }
 
       const data = await response.json()
@@ -359,14 +360,15 @@ export default function Home() {
 
       setResults(data)
       setShowResults(true)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Analysis error:', error)
+      const errorMessage = error.message || 'Analysis failed. Please try again.'
       setCurrentProgress({
         phase: 'Error',
-        detail: 'Analysis failed. Please try again.',
+        detail: errorMessage,
         progress: 0
       })
-      setTimeout(() => alert('Analysis failed. Please try again.'), 100)
+      setTimeout(() => alert(errorMessage), 100)
     } finally {
       setIsRunning(false)
       // Clear progress after a short delay

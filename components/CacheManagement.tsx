@@ -41,6 +41,11 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
   const [viewTickerData, setViewTickerData] = useState<any>(null)
   
   const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [exportTickerInput, setExportTickerInput] = useState('')
+  const [exportLoading, setExportLoading] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importLoading, setImportLoading] = useState(false)
+  
 
   const fetchCacheStats = async () => {
     setCacheStatsLoading(true)
@@ -236,6 +241,103 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
       alert(`Error: ${error.message}`)
     }
   }
+
+  const exportTickersAsJSON = async () => {
+    setExportLoading(true)
+    try {
+      let tickers: string[] = []
+      
+      if (exportTickerInput.trim()) {
+        // Parse comma-separated input
+        tickers = exportTickerInput.split(',').map(t => t.trim().toUpperCase()).filter(t => t.length > 0)
+      } else {
+        // Export all cached tickers
+        if (!cacheStats?.tickersList || cacheStats.tickersList.length === 0) {
+          alert('No cached tickers to export')
+          return
+        }
+        tickers = cacheStats.tickersList
+      }
+
+      const response = await fetch('/api/cache-export-tickers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tickers })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Export failed')
+      }
+
+      // Download the JSON file
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `cache-export-${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      alert(`Successfully exported ${tickers.length} tickers as JSON`)
+    } catch (error: any) {
+      alert(`Export failed: ${error.message}`)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const importTickersFromJSON = async () => {
+    if (!importFile) {
+      alert('Please select a JSON file to import')
+      return
+    }
+
+    setImportLoading(true)
+    try {
+      const fileContent = await importFile.text()
+      const importData = JSON.parse(fileContent)
+
+      // Extract data from export format if needed
+      const dataToImport = importData.data || importData
+
+      const response = await fetch('/api/cache-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          data: dataToImport,
+          overwrite: false
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.message || 'Import failed')
+      }
+
+      const result = await response.json()
+      alert(result.message)
+      
+      // Clear the file input and refresh stats
+      setImportFile(null)
+      const fileInput = document.getElementById('jsonImport') as HTMLInputElement
+      if (fileInput) fileInput.value = ''
+      
+      fetchCacheStats()
+    } catch (error: any) {
+      alert(`Import failed: ${error.message}`)
+    } finally {
+      setImportLoading(false)
+    }
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    setImportFile(file || null)
+  }
+
 
   const exportFailedTickers = () => {
     if (!cacheStats?.failedTickers || cacheStats.failedTickers.length === 0) {
@@ -705,6 +807,89 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
               </div>
             </div>
           )}
+
+          {/* Advanced Operations */}
+          <div>
+            <div className="flex items-center space-x-2 mb-4">
+              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-900">Advanced Operations</h3>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Export JSON */}
+              <div className="bg-indigo-50 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-indigo-900 mb-2">Export Cache as JSON</h4>
+                <p className="text-xs text-indigo-700 mb-3">Export ticker data for backup or sharing</p>
+                <input
+                  type="text"
+                  value={exportTickerInput}
+                  onChange={(e) => setExportTickerInput(e.target.value)}
+                  placeholder="AAPL,MSFT,GOOGL or leave empty for all"
+                  className="w-full px-3 py-2 border border-indigo-200 rounded-lg focus:ring-2 focus:ring-indigo-500 text-sm mb-2"
+                />
+                <button
+                  onClick={exportTickersAsJSON}
+                  disabled={exportLoading}
+                  className="w-full flex items-center justify-center space-x-2 px-3 py-2 bg-indigo-100 hover:bg-indigo-200 disabled:bg-gray-100 text-indigo-700 disabled:text-gray-400 rounded-lg transition-colors text-sm"
+                >
+                  {exportLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600"></div>
+                      <span>Exporting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Export JSON</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Import JSON */}
+              <div className="bg-green-50 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-green-900 mb-2">Import Cache from JSON</h4>
+                <p className="text-xs text-green-700 mb-3">Import ticker data from backup file</p>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={handleImportFile}
+                  className="hidden"
+                  id="jsonImport"
+                />
+                <label 
+                  htmlFor="jsonImport"
+                  className="w-full cursor-pointer bg-green-100 hover:bg-green-200 border-2 border-dashed border-green-200 rounded-lg p-3 text-center text-sm text-green-600 mb-2 block"
+                >
+                  {importFile ? importFile.name : 'Choose JSON File'}
+                </label>
+                <button
+                  onClick={importTickersFromJSON}
+                  disabled={importLoading || !importFile}
+                  className="w-full flex items-center justify-center space-x-2 px-3 py-2 bg-green-100 hover:bg-green-200 disabled:bg-gray-100 text-green-700 disabled:text-gray-400 rounded-lg transition-colors text-sm"
+                >
+                  {importLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                      <span>Importing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <span>Import JSON</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
