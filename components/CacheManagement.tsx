@@ -267,6 +267,27 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
     document.body.removeChild(link)
   }
 
+  const exportAllCachedTickers = () => {
+    if (!cacheStats?.tickersList || cacheStats.tickersList.length === 0) {
+      alert('No cached tickers to export')
+      return
+    }
+
+    // Create CSV content with just ticker symbols
+    const csvContent = ['Ticker', ...cacheStats.tickersList].join('\n')
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `cached-tickers-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const retryFailedWithDelisted = async () => {
     if (!cacheStats?.failedTickers || cacheStats.failedTickers.length === 0) {
       alert('No failed tickers to retry')
@@ -348,16 +369,28 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                 </svg>
                 <h3 className="text-lg font-semibold text-gray-700">Cache Statistics</h3>
               </div>
-              <button
-                onClick={fetchCacheStats}
-                disabled={cacheStatsLoading}
-                className="flex items-center space-x-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-sm"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
-              </button>
+              <div className="flex space-x-2">
+                <button
+                  onClick={exportAllCachedTickers}
+                  disabled={!cacheStats?.tickersList || cacheStats.tickersList.length === 0}
+                  className="flex items-center space-x-1 px-3 py-1 bg-green-50 hover:bg-green-100 disabled:bg-gray-100 text-green-600 disabled:text-gray-400 rounded text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span>Export Cached</span>
+                </button>
+                <button
+                  onClick={fetchCacheStats}
+                  disabled={cacheStatsLoading}
+                  className="flex items-center space-x-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span>Refresh</span>
+                </button>
+              </div>
             </div>
 
             {cacheStatsLoading ? (
