@@ -4,6 +4,7 @@ import Header from '../components/ui/Header'
 import ResultsDisplay from '../components/backtesting/ResultsDisplay'
 import CacheManagement from '../components/CacheManagement'
 import SimulationHistory from '../components/SimulationHistory'
+import BatchJobManager from '../components/BatchJobManager'
 
 export default function Home() {
   const [tickers, setTickers] = useState<string>('AAPL, MSFT, GOOGL, AMZN, TSLA')
@@ -24,6 +25,7 @@ export default function Home() {
   const [showResults, setShowResults] = useState(false)
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [showCacheManagement, setShowCacheManagement] = useState(false)
+  const [showBatchJobManager, setShowBatchJobManager] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
@@ -408,6 +410,16 @@ export default function Home() {
                   </svg>
                   <span className="text-sm font-medium">Cache</span>
                 </button>
+                <button 
+                  onClick={() => setShowBatchJobManager(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
+                  title="Batch Job Manager"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                  </svg>
+                  <span className="text-sm font-medium">Batch Jobs</span>
+                </button>
                 <button className="text-gray-600 hover:text-gray-900">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -734,6 +746,12 @@ export default function Home() {
       <CacheManagement 
         isOpen={showCacheManagement} 
         onClose={() => setShowCacheManagement(false)}
+      />
+
+      {/* Batch Job Manager Modal */}
+      <BatchJobManager 
+        isOpen={showBatchJobManager} 
+        onClose={() => setShowBatchJobManager(false)}
       />
     </>
   )
