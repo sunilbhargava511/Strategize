@@ -25,7 +25,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { tickers, action, useBatch = false } = req.body;
+    const { tickers, action, useBatch = false, retryDelisted = false } = req.body;
 
     if (!tickers || !Array.isArray(tickers) || tickers.length === 0) {
       return res.status(400).json({ 

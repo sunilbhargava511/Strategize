@@ -237,6 +237,75 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
     }
   }
 
+  const exportFailedTickers = () => {
+    if (!cacheStats?.failedTickers || cacheStats.failedTickers.length === 0) {
+      alert('No failed tickers to export')
+      return
+    }
+
+    // Create CSV content
+    const headers = ['Ticker', 'Error', 'Failed At', 'Last Attempt']
+    const csvContent = [
+      headers.join(','),
+      ...cacheStats.failedTickers.map(failed => [
+        failed.ticker,
+        `"${failed.error.replace(/"/g, '""')}"`, // Escape quotes in error messages
+        failed.failed_at,
+        failed.last_attempt
+      ].join(','))
+    ].join('\n')
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    const url = URL.createObjectURL(blob)
+    link.setAttribute('href', url)
+    link.setAttribute('download', `failed-tickers-${new Date().toISOString().split('T')[0]}.csv`)
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const retryFailedWithDelisted = async () => {
+    if (!cacheStats?.failedTickers || cacheStats.failedTickers.length === 0) {
+      alert('No failed tickers to retry')
+      return
+    }
+
+    const failedTickerSymbols = cacheStats.failedTickers.map(f => f.ticker)
+    
+    try {
+      const response = await fetch('/api/fill-cache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          tickers: failedTickerSymbols, 
+          action: 'fill',
+          retryDelisted: true
+        })
+      })
+
+      if (!response.ok) throw new Error('Retry failed')
+
+      // Check if this is a batch job response (status 202)
+      if (response.status === 202) {
+        const batchData = await response.json()
+        if (batchData.jobId) {
+          localStorage.setItem('lastBatchJobId', batchData.jobId)
+          alert(`Batch job created for retrying ${failedTickerSymbols.length} failed tickers with .DELISTED suffix: ${batchData.jobId}\n\nUse the "Batch Jobs" button to monitor progress!`)
+          return
+        }
+      }
+
+      const data = await response.json()
+      alert(`Retry with .DELISTED completed!\nSuccessful: ${data.results?.successful?.length || 0}\nFailed: ${data.results?.errors?.length || 0}`)
+      fetchCacheStats() // Refresh to see updated failures
+    } catch (error: any) {
+      alert(`Retry error: ${error.message}`)
+    }
+  }
+
   useEffect(() => {
     if (isOpen) {
       fetchCacheStats()
@@ -548,11 +617,33 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
           {/* Remove Failed Tickers */}
           {cacheStats && cacheStats.failedTickersCount > 0 && (
             <div>
-              <div className="flex items-center space-x-2 mb-4">
-                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
-                </svg>
-                <h3 className="text-lg font-semibold text-gray-900">Failed Tickers</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <h3 className="text-lg font-semibold text-gray-900">Failed Tickers</h3>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={exportFailedTickers}
+                    className="flex items-center space-x-1 px-3 py-1 bg-orange-50 hover:bg-orange-100 text-orange-600 rounded text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    <span>Export CSV</span>
+                  </button>
+                  <button
+                    onClick={retryFailedWithDelisted}
+                    className="flex items-center space-x-1 px-3 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded text-sm"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Retry .DELISTED</span>
+                  </button>
+                </div>
               </div>
               
               <div className="space-y-2 max-h-48 overflow-y-auto">
