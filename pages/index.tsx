@@ -39,6 +39,9 @@ export default function Home() {
   
   // Share state
   const [isSharing, setIsSharing] = useState(false)
+  
+  // Simulation history refresh trigger
+  const [simulationHistoryRefresh, setSimulationHistoryRefresh] = useState(0)
 
   const handleShareResults = async () => {
     if (!results) return
@@ -387,6 +390,9 @@ export default function Home() {
       // Ensure results panel is expanded when showing results
       setLeftPanelCollapsed(true)
       setShowResults(true)
+      
+      // Refresh simulation history after successful backtest
+      setSimulationHistoryRefresh(prev => prev + 1)
     } catch (error: any) {
       console.error('Analysis error:', error)
       const errorMessage = error.message || 'Analysis failed. Please try again.'
@@ -648,7 +654,10 @@ export default function Home() {
               </div>
 
               {/* Simulation History */}
-              <SimulationHistory onLoadAnalysis={handleLoadCachedAnalysis} />
+              <SimulationHistory 
+                onLoadAnalysis={handleLoadCachedAnalysis} 
+                refreshTrigger={simulationHistoryRefresh}
+              />
 
 
             </div>
@@ -657,7 +666,13 @@ export default function Home() {
             <div className={`space-y-6 relative ${leftPanelCollapsed ? '' : 'min-w-[770px]'}`}>
               {/* Collapse Toggle Button */}
               <button
-                onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+                onClick={() => {
+                  setLeftPanelCollapsed(!leftPanelCollapsed)
+                  // Refresh simulation history when showing setup panel
+                  if (leftPanelCollapsed) {
+                    setSimulationHistoryRefresh(prev => prev + 1)
+                  }
+                }}
                 className="absolute top-2 left-2 z-10 flex items-center space-x-2 px-3 py-2 bg-white border border-gray-200 rounded-lg shadow-sm hover:bg-gray-50 transition-colors text-sm"
               >
                 <svg className={`w-4 h-4 transition-transform ${leftPanelCollapsed ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">

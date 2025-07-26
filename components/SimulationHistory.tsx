@@ -168,29 +168,39 @@ export default function SimulationHistory({ onLoadAnalysis, refreshTrigger }: Si
   const getStrategyPerformanceData = (analysis: CachedAnalysis) => {
     if (!analysis.winningStrategy || !analysis.worstStrategy) return null
 
-    // Calculate returns from final values vs initial investment
+    // Calculate ANNUALIZED returns from final values vs initial investment
     const initialInvestment = analysis.initialInvestment
-    const winnerReturn = ((analysis.winningStrategy.finalValue - initialInvestment) / initialInvestment) * 100
-    const loserReturn = ((analysis.worstStrategy.finalValue - initialInvestment) / initialInvestment) * 100
+    const years = analysis.endYear - analysis.startYear
     
-    // Try to get SPY return from strategyPerformance, fallback to default
-    let spyReturn = 12.84 // Default fallback
+    // Annualized return formula: (finalValue/initialValue)^(1/years) - 1
+    const winnerAnnualizedReturn = years > 0 
+      ? (Math.pow(analysis.winningStrategy.finalValue / initialInvestment, 1 / years) - 1) * 100
+      : ((analysis.winningStrategy.finalValue - initialInvestment) / initialInvestment) * 100
+      
+    const loserAnnualizedReturn = years > 0
+      ? (Math.pow(analysis.worstStrategy.finalValue / initialInvestment, 1 / years) - 1) * 100
+      : ((analysis.worstStrategy.finalValue - initialInvestment) / initialInvestment) * 100
+    
+    // Try to get SPY return from strategyPerformance, calculate annualized
+    let spyAnnualizedReturn = 12.84 // Default fallback
     if ((analysis as any).strategyPerformance?.spyBenchmark?.finalValue) {
-      spyReturn = (((analysis as any).strategyPerformance.spyBenchmark.finalValue - initialInvestment) / initialInvestment) * 100
+      spyAnnualizedReturn = years > 0
+        ? (Math.pow((analysis as any).strategyPerformance.spyBenchmark.finalValue / initialInvestment, 1 / years) - 1) * 100
+        : (((analysis as any).strategyPerformance.spyBenchmark.finalValue - initialInvestment) / initialInvestment) * 100
     }
 
     return {
       winner: {
         name: analysis.winningStrategy.name,
-        return: winnerReturn
+        return: winnerAnnualizedReturn
       },
       loser: {
         name: analysis.worstStrategy.name,
-        return: loserReturn
+        return: loserAnnualizedReturn
       },
       spy: {
         name: 'SPY',
-        return: spyReturn
+        return: spyAnnualizedReturn
       }
     }
   }
