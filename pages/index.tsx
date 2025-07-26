@@ -26,8 +26,10 @@ export default function Home() {
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
   const [showCacheManagement, setShowCacheManagement] = useState(false)
   const [showBatchJobManager, setShowBatchJobManager] = useState(false)
+  const [showSettingsDropdown, setShowSettingsDropdown] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const settingsDropdownRef = useRef<HTMLDivElement>(null)
   
   
   // Simulation name state
@@ -86,6 +88,23 @@ export default function Home() {
       setSimulationName(generateDefaultSimulationName())
     }
   }, [detectedTickers, configuration.startYear, configuration.endYear, isSimulationNameManuallySet])
+
+  // Handle click outside settings dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (settingsDropdownRef.current && !settingsDropdownRef.current.contains(event.target as Node)) {
+        setShowSettingsDropdown(false)
+      }
+    }
+
+    if (showSettingsDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSettingsDropdown])
 
   const handleLoadCachedAnalysis = async (cachedAnalysis: any) => {
     console.log('Loading cached analysis:', cachedAnalysis)
@@ -410,32 +429,63 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex items-center space-x-4">
-                <button 
-                  onClick={() => setShowCacheManagement(true)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
-                  title="Cache Management"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                  </svg>
-                  <span className="text-sm font-medium">Cache</span>
-                </button>
-                <button 
-                  onClick={() => setShowBatchJobManager(true)}
-                  className="flex items-center space-x-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition-colors"
-                  title="Batch Job Manager"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
-                  </svg>
-                  <span className="text-sm font-medium">Batch Jobs</span>
-                </button>
-                <button className="text-gray-600 hover:text-gray-900">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
+                {/* Settings Dropdown */}
+                <div className="relative" ref={settingsDropdownRef}>
+                  <button 
+                    onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                    className="text-gray-600 hover:text-gray-900 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                    title="Settings"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </button>
+                  
+                  {/* Dropdown Menu */}
+                  {showSettingsDropdown && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                      <button
+                        onClick={() => {
+                          setShowCacheManagement(true)
+                          setShowSettingsDropdown(false)
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+                        </svg>
+                        <div>
+                          <div className="font-medium text-gray-900">Cache Management</div>
+                          <div className="text-sm text-gray-500">Manage cached data and storage</div>
+                        </div>
+                      </button>
+                      
+                      <button
+                        onClick={() => {
+                          setShowBatchJobManager(true)
+                          setShowSettingsDropdown(false)
+                        }}
+                        className="w-full text-left px-4 py-3 hover:bg-gray-50 flex items-center space-x-3 transition-colors"
+                      >
+                        <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4" />
+                        </svg>
+                        <div>
+                          <div className="font-medium text-gray-900">Batch Job Manager</div>
+                          <div className="text-sm text-gray-500">Monitor background processes</div>
+                        </div>
+                      </button>
+                      
+                      <hr className="my-2 border-gray-200" />
+                      
+                      <div className="px-4 py-2">
+                        <div className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-1">System</div>
+                        <div className="text-sm text-gray-600">Version 1.0.0</div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
