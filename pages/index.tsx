@@ -495,7 +495,7 @@ export default function Home() {
         </div>
         
         <main className="w-full px-4 py-8">
-          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[2fr_3fr]'} ${leftPanelCollapsed ? '' : 'max-w-[1920px] mx-auto'}`}>
+          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[9fr_11fr]'} ${leftPanelCollapsed ? '' : 'max-w-[1920px] mx-auto'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card - Fidelity Style */}
