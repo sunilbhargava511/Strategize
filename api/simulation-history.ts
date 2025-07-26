@@ -14,6 +14,14 @@ interface CachedAnalysis {
   isPermanent: boolean;
   size?: number;
   customName?: string;
+  winningStrategy?: {
+    name: string;
+    finalValue: number;
+  };
+  worstStrategy?: {
+    name: string;
+    finalValue: number;
+  };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
