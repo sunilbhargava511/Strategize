@@ -494,8 +494,8 @@ export default function Home() {
           </div>
         </div>
         
-        <main className="w-full px-4 py-6">
-          <div className={`grid gap-6 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[9fr_11fr]'}`}>
+        <main className="w-full px-4 py-6 overflow-x-auto">
+          <div className={`grid gap-6 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[9fr_11fr]'} ${leftPanelCollapsed ? '' : 'min-w-[1400px]'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card - Fidelity Style */}
@@ -654,7 +654,7 @@ export default function Home() {
             </div>
 
             {/* Right Column - Results */}
-            <div className="space-y-6 relative">
+            <div className={`space-y-6 relative ${leftPanelCollapsed ? '' : 'min-w-[770px]'}`}>
               {/* Collapse Toggle Button */}
               <button
                 onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
