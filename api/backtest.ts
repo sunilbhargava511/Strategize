@@ -504,7 +504,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let processedTickers = finalValidTickers;
     const isLargePortfolioOptimized = false;
     
-    // Ensure SPY is included for benchmark calculation
+    // Ensure SPY is included for benchmark calculation (SPY is always cached)
     if (!processedTickers.includes('SPY') && !processedTickers.includes('SPY.US')) {
       processedTickers = [...processedTickers, 'SPY'];
       logger.debug(`   📊 Adding SPY for benchmark calculation`);
@@ -702,19 +702,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           logger.debug(`     📋 Benchmark: SPY ETF only`);
           logger.debug(`     🏦 Type: Buy & Hold SPY`);
           
-          // Check if SPY data is available
-          const spyTicker = historicalData['SPY'] ? 'SPY' : historicalData['SPY.US'] ? 'SPY.US' : null;
-          if (!spyTicker) {
-            logger.warn(`     ⚠️  SPY data not available in historical data`);
-            return null;
-          }
-          
-          const result = await calculateStrategy([spyTicker], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
+          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
           logger.success(`     COMPLETED: SPY Benchmark - 1 ticker - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           logger.error('Error in spyBenchmark:', err);
-          return null; // Return null instead of throwing
+          throw err;
         })
       ]);
 
@@ -835,12 +828,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           spyBenchmark: spyBenchmark ? {
             name: 'SPY Benchmark',
             finalValue: spyBenchmark.finalValue,
-            annualizedReturn: spyBenchmark.annualizedReturn || (
-              // Calculate annualized return if not provided
-              endYear > startYear 
-                ? Math.pow(spyBenchmark.finalValue / initialInvestment, 1 / (endYear - startYear)) - 1
-                : (spyBenchmark.finalValue - initialInvestment) / initialInvestment
-            )
+            annualizedReturn: spyBenchmark.annualizedReturn
           } : undefined
         };
       })(),
