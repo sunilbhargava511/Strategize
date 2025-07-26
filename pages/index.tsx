@@ -420,9 +420,9 @@ export default function Home() {
               <div className="flex items-center space-x-3">
                 <div className="w-12 h-12 flex items-center justify-center">
                   <img 
-                    src="/yoda-logo.svg" 
+                    src="/yoda-logo.png" 
                     alt="Yoda Financial Advisor Logo" 
-                    className="w-12 h-12"
+                    className="w-12 h-12 object-contain"
                   />
                 </div>
                 <div>
