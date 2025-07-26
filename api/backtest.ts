@@ -817,6 +817,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           worstStrategy: {
             name: worstStrategy.name,
             finalValue: worstStrategy.data.finalValue
+          },
+          spyBenchmark: {
+            name: 'SPY Benchmark',
+            finalValue: spyBenchmark.finalValue
           }
         };
       })(),
