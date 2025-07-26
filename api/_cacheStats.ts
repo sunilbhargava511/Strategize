@@ -162,6 +162,13 @@ export async function addBacktestToStats(key: string): Promise<void> {
     stats.backtestCount = stats.backtestKeys.size;
     await saveCacheStats(stats);
   }
+  
+  // Also track the summary key for efficient list loading
+  const summaryKey = `${key}:summary`;
+  if (!stats.backtestKeys.has(summaryKey)) {
+    stats.backtestKeys.add(summaryKey);
+    // Note: Don't increment backtestCount for summary keys as they're just metadata
+  }
 }
 
 // Remove a backtest from stats
