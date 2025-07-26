@@ -75,25 +75,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // Calculate size estimate (lightweight)
           const size = JSON.stringify(result).length;
           
-          // Extract strategy performance data
-          const strategies = [
-            { name: 'Equal Weight Buy & Hold', data: result.equalWeightBuyHold },
-            { name: 'Market Cap Buy & Hold', data: result.marketCapBuyHold },
-            { name: 'Equal Weight Rebalanced', data: result.equalWeightRebalanced },
-            { name: 'Market Cap Rebalanced', data: result.marketCapRebalanced }
-          ].filter(s => s.data && s.data.finalValue);
-
-          // Find winning and worst strategies
+          // Use cached strategy performance data if available, otherwise calculate
           let winningStrategy = null;
           let worstStrategy = null;
           
-          if (strategies.length > 0) {
-            winningStrategy = strategies.reduce((prev, current) => 
-              (current.data.finalValue > prev.data.finalValue) ? current : prev
-            );
-            worstStrategy = strategies.reduce((prev, current) => 
-              (current.data.finalValue < prev.data.finalValue) ? current : prev
-            );
+          if (result.strategyPerformance) {
+            // Use pre-calculated strategy performance from cache
+            winningStrategy = result.strategyPerformance.winningStrategy;
+            worstStrategy = result.strategyPerformance.worstStrategy;
+          } else {
+            // Fallback to calculating on-the-fly for older cached results
+            const strategies = [
+              { name: 'Equal Weight Buy & Hold', data: result.equalWeightBuyHold },
+              { name: 'Market Cap Buy & Hold', data: result.marketCapBuyHold },
+              { name: 'Equal Weight Rebalanced', data: result.equalWeightRebalanced },
+              { name: 'Market Cap Rebalanced', data: result.marketCapRebalanced }
+            ].filter(s => s.data && s.data.finalValue);
+
+            if (strategies.length > 0) {
+              const winning = strategies.reduce((prev, current) => 
+                (current.data.finalValue > prev.data.finalValue) ? current : prev
+              );
+              const worst = strategies.reduce((prev, current) => 
+                (current.data.finalValue < prev.data.finalValue) ? current : prev
+              );
+              
+              winningStrategy = {
+                name: winning.name,
+                finalValue: winning.data.finalValue
+              };
+              worstStrategy = {
+                name: worst.name,
+                finalValue: worst.data.finalValue
+              };
+            }
           }
           
           analyses.push({
@@ -108,14 +123,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             cachedAt: result.parameters?.analysisDate || result.cached_at || 'Unknown',
             expiresAt: isPermanent ? 'Never' : 'Within 24 hours',
             customName: result.customName || undefined,
-            winningStrategy: winningStrategy ? {
-              name: winningStrategy.name,
-              finalValue: winningStrategy.data.finalValue
-            } : undefined,
-            worstStrategy: worstStrategy ? {
-              name: worstStrategy.name,
-              finalValue: worstStrategy.data.finalValue
-            } : undefined
+            winningStrategy: winningStrategy || undefined,
+            worstStrategy: worstStrategy || undefined
           });
         } catch (parseError) {
           console.warn(`Failed to parse cache key: ${key}`, parseError);

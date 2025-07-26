@@ -791,6 +791,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         usingExchangeSuffix: true,
         historicalDataKeys: Object.keys(historicalData).length
       },
+      // Strategy performance summary for quick access in simulation history
+      strategyPerformance: (() => {
+        const strategies = [
+          { name: 'Equal Weight Buy & Hold', data: equalWeightBuyHold },
+          { name: 'Market Cap Buy & Hold', data: marketCapBuyHold },
+          { name: 'Equal Weight Rebalanced', data: equalWeightRebalanced },
+          { name: 'Market Cap Rebalanced', data: marketCapRebalanced }
+        ].filter(s => s.data && s.data.finalValue);
+
+        if (strategies.length === 0) return null;
+
+        const winningStrategy = strategies.reduce((prev, current) => 
+          (current.data.finalValue > prev.data.finalValue) ? current : prev
+        );
+        const worstStrategy = strategies.reduce((prev, current) => 
+          (current.data.finalValue < prev.data.finalValue) ? current : prev
+        );
+
+        return {
+          winningStrategy: {
+            name: winningStrategy.name,
+            finalValue: winningStrategy.data.finalValue
+          },
+          worstStrategy: {
+            name: worstStrategy.name,
+            finalValue: worstStrategy.data.finalValue
+          }
+        };
+      })(),
       message: processedTickers.length > 10 ? 
         'Note: Calculations based on real market data. Large portfolios may take time to process.' :
         'Calculations based on real EODHD market data with SPY benchmark.'
