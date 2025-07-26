@@ -494,8 +494,8 @@ export default function Home() {
           </div>
         </div>
         
-        <main className="w-full px-4 py-8">
-          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[9fr_11fr]'} ${leftPanelCollapsed ? '' : 'max-w-[1920px] mx-auto'}`}>
+        <main className="w-full px-4 py-6">
+          <div className={`grid gap-6 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[9fr_11fr]'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card - Fidelity Style */}
@@ -511,7 +511,7 @@ export default function Home() {
                   </div>
                 </div>
                 
-                <div className="p-6">
+                <div className="p-5">
 
                 {/* Stock Tickers Input - Fidelity Style */}
                 <div className="space-y-4">
@@ -579,7 +579,7 @@ export default function Home() {
                   </div>
                 </div>
                 
-                <div className="p-6">
+                <div className="p-5">
 
                 <div className="space-y-6">
                   <h3 className="text-lg font-semibold text-gray-900 border-b border-gray-200 pb-2">Investment Period & Amount</h3>
@@ -666,7 +666,7 @@ export default function Home() {
                 <span>{leftPanelCollapsed ? 'Show Setup' : 'Hide Setup'}</span>
               </button>
               
-              <div className={`bg-white rounded-2xl shadow-sm ${leftPanelCollapsed ? 'p-8' : 'p-6'} min-h-[600px] flex items-center justify-center`}>
+              <div className={`bg-white rounded-2xl shadow-sm ${leftPanelCollapsed ? 'p-6' : 'p-4'} min-h-[600px] flex items-center justify-center`}>
                 {!showResults ? (
                   <div className="text-center space-y-4">
                     {isRunning && currentProgress.phase ? (
