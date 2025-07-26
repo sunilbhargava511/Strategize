@@ -43,7 +43,7 @@ const CACHE_STATS_KEY = 'cache_stats_v1';
 let inMemoryStats: CacheStats | null = null;
 
 // Initialize empty stats
-function createEmptyStats(): CacheStats {
+export function createEmptyStats(): CacheStats {
   return {
     tickerCount: 0,
     backtestCount: 0,
@@ -159,7 +159,8 @@ export async function addBacktestToStats(key: string): Promise<void> {
   const stats = await getCacheStats();
   if (!stats.backtestKeys.has(key)) {
     stats.backtestKeys.add(key);
-    stats.backtestCount = stats.backtestKeys.size;
+    // Only count actual backtest keys, not summary keys
+    stats.backtestCount = Array.from(stats.backtestKeys).filter(k => !k.includes(':summary')).length;
     await saveCacheStats(stats);
   }
   
@@ -176,7 +177,11 @@ export async function removeBacktestFromStats(key: string): Promise<void> {
   const stats = await getCacheStats();
   if (stats.backtestKeys.has(key)) {
     stats.backtestKeys.delete(key);
-    stats.backtestCount = stats.backtestKeys.size;
+    // Also remove the summary key if it exists
+    const summaryKey = `${key}:summary`;
+    stats.backtestKeys.delete(summaryKey);
+    // Only count actual backtest keys, not summary keys
+    stats.backtestCount = Array.from(stats.backtestKeys).filter(k => !k.includes(':summary')).length;
     await saveCacheStats(stats);
   }
 }
@@ -241,7 +246,8 @@ export async function rebuildCacheStats(): Promise<CacheStats> {
     } while (cursor !== 0);
     
     stats.tickerCount = stats.tickers.size;
-    stats.backtestCount = stats.backtestKeys.size;
+    // Only count actual backtest keys, not summary keys
+    stats.backtestCount = Array.from(stats.backtestKeys).filter(k => !k.includes(':summary')).length;
     stats.shareCount = stats.shareKeys.size;
     
     await saveCacheStats(stats);
@@ -302,7 +308,8 @@ export async function importDataWithStats(importData: Record<string, any>): Prom
     
     // Update counts and save stats
     stats.tickerCount = stats.tickers.size;
-    stats.backtestCount = stats.backtestKeys.size;
+    // Only count actual backtest keys, not summary keys
+    stats.backtestCount = Array.from(stats.backtestKeys).filter(k => !k.includes(':summary')).length;
     stats.shareCount = stats.shareKeys.size;
     await saveCacheStats(stats);
     
