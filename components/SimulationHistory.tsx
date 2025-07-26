@@ -13,6 +13,14 @@ interface CachedAnalysis {
   size?: number
   customName?: string
   cachedData?: any
+  winningStrategy?: {
+    name: string
+    finalValue: number
+  }
+  worstStrategy?: {
+    name: string
+    finalValue: number
+  }
 }
 
 interface SimulationHistoryProps {
@@ -133,6 +141,16 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
       return tickers.join(', ')
     }
     return `${tickers.slice(0, maxShow).join(', ')} +${tickers.length - maxShow} more`
+  }
+
+  const formatCurrency = (value: number) => {
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(2)}M`
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`
+    } else {
+      return `$${value.toFixed(0)}`
+    }
   }
 
   useEffect(() => {
@@ -271,15 +289,48 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
                       </button>
                     </div>
                   )}
-                  <div className="flex items-center space-x-4 text-sm text-gray-600 mt-1">
-                    <span>{analysis.tickerCount} tickers</span>
-                    <span>{analysis.startYear}-{analysis.endYear}</span>
-                    <span>${(analysis.initialInvestment / 1000000).toFixed(1)}M</span>
-                    <span>Cached {formatDate(analysis.cachedAt)}</span>
+                  
+                  {/* Basic Info */}
+                  <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Date:</span> <span className="text-gray-900">{formatDate(analysis.cachedAt)}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Years:</span> <span className="text-gray-900">{analysis.endYear - analysis.startYear}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Tickers:</span> <span className="text-gray-900">{analysis.tickerCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Period:</span> <span className="text-gray-900">{analysis.startYear}-{analysis.endYear}</span>
+                    </div>
                   </div>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {formatTickers(analysis.tickers, 5)}
-                  </p>
+
+                  {/* Strategy Performance */}
+                  {analysis.winningStrategy && analysis.worstStrategy && (
+                    <div className="mt-4 pt-3 border-t border-gray-100">
+                      <div className="grid grid-cols-1 gap-3 text-sm">
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-gray-500">Best Strategy:</span>
+                            <div className="font-medium text-green-700">{analysis.winningStrategy.name}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold text-green-700">{formatCurrency(analysis.winningStrategy.finalValue)}</div>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-gray-500">Worst Strategy:</span>
+                            <div className="font-medium text-red-700">{analysis.worstStrategy.name}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold text-red-700">{formatCurrency(analysis.worstStrategy.finalValue)}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center space-x-2 ml-4">
                   <button
