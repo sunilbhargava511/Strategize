@@ -161,6 +161,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Save the updated entry (permanent cache)
         await cache.set(key, updatedData);
         
+        // IMPORTANT: Also update the centralized simulation summaries
+        const { getSimulationSummary, addSimulationSummary } = await import('./_simulationSummaries');
+        const existingSummary = await getSimulationSummary(key);
+        
+        if (existingSummary) {
+          const updatedSummary = {
+            ...existingSummary,
+            customName: customName || undefined
+          };
+          await addSimulationSummary(updatedSummary);
+          console.log(`📝 Updated summary for ${key} with new name`);
+        }
+        
         console.log(`✅ Successfully updated name for ${key}: "${customName || 'Unnamed'}"`);
         
         return res.status(200).json({
