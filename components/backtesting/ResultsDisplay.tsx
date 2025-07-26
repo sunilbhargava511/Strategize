@@ -285,6 +285,18 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
     { key: 'spyBenchmark', name: 'SPY Benchmark', icon: '🏛️' },
   ]
 
+  // Map strategy keys to their chart line colors
+  const getStrategyColor = (strategyKey: string) => {
+    const colorMap: { [key: string]: string } = {
+      'equalWeightBuyHold': 'text-green-600',     // #16a34a
+      'marketCapBuyHold': 'text-blue-600',        // #2563eb
+      'equalWeightRebalanced': 'text-purple-500', // #8b5cf6
+      'marketCapRebalanced': 'text-orange-500',   // #f59e0b
+      'spyBenchmark': 'text-red-600',            // #dc2626
+    }
+    return colorMap[strategyKey] || 'text-gray-900'
+  }
+
   const tabs = [
     { id: 'overview', name: 'Overview', icon: '📊' },
     { id: 'holdings', name: 'Holdings', icon: '📋' },
@@ -981,7 +993,7 @@ export default function ResultsDisplay({ results, simulationName }: ResultsDispl
                           <div className="flex items-center">
                             {isTop && <div className="w-2 h-8 bg-green-600 rounded-r mr-2"></div>}
                             <div>
-                              <p className="font-medium text-gray-900 text-sm">{strategy.name}</p>
+                              <p className={`font-medium text-sm ${getStrategyColor(strategy.key)}`}>{strategy.name}</p>
                               <p className="text-xs text-gray-500">{strategy.icon}</p>
                             </div>
                           </div>
