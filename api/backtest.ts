@@ -847,9 +847,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     logger.debug(`   💾 Caching results permanently (all data is historical)...`);
     await cache.set(cacheKey, results); // No expiration - permanent cache
     
-    // Cache lightweight summary for fast list loading
-    const summaryKey = `${cacheKey}:summary`;
-    const lightweightSummary = {
+    // Add to centralized simulation summaries
+    const summary = {
       key: cacheKey,
       tickers: finalValidTickers,
       startYear,
@@ -859,13 +858,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       cachedAt: new Date().toISOString(),
       isPermanent: endYear < new Date().getFullYear(),
       customName: results.customName || undefined,
-      // Extract only final values and strategy names for performance summary
       strategyPerformance: results.strategyPerformance,
-      // Add basic metadata without full time series data
       analysisDate: results.parameters?.analysisDate
     };
     
-    await cache.set(summaryKey, lightweightSummary); // Cache summary separately
+    const { addSimulationSummary } = await import('./_simulationSummaries');
+    await addSimulationSummary(summary);
     
     // Update cache stats
     const { addBacktestToStats } = await import('./_cacheStats');
