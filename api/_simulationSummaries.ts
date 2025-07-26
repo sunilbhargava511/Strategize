@@ -25,7 +25,7 @@ export interface SimulationSummary {
       name: string;
       finalValue: number;
     };
-  };
+  } | null;
   analysisDate?: string;
 }
 
