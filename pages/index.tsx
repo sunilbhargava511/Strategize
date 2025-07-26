@@ -418,11 +418,12 @@ export default function Home() {
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 flex items-center justify-center">
+                <div className="flex items-center justify-center">
                   <img 
                     src="/yoda-logo.png" 
                     alt="Yoda Financial Advisor Logo" 
-                    className="w-12 h-12 object-contain"
+                    className="object-contain"
+                    style={{ width: '72px', height: '72px' }}
                   />
                 </div>
                 <div>
