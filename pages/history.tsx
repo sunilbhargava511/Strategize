@@ -121,12 +121,10 @@ export default function HistoryBrowser() {
       ? (Math.pow(analysis.worstStrategy.finalValue / initialInvestment, 1 / years) - 1) * 100
       : ((analysis.worstStrategy.finalValue - initialInvestment) / initialInvestment) * 100
     
-    // Try to get SPY return from strategyPerformance, calculate annualized
+    // Get SPY return from strategyPerformance
     let spyAnnualizedReturn = null
-    if ((analysis as any).strategyPerformance?.spyBenchmark?.finalValue) {
-      spyAnnualizedReturn = years > 0
-        ? (Math.pow((analysis as any).strategyPerformance.spyBenchmark.finalValue / initialInvestment, 1 / years) - 1) * 100
-        : (((analysis as any).strategyPerformance.spyBenchmark.finalValue - initialInvestment) / initialInvestment) * 100
+    if ((analysis as any).strategyPerformance?.spyBenchmark?.annualizedReturn !== undefined) {
+      spyAnnualizedReturn = (analysis as any).strategyPerformance.spyBenchmark.annualizedReturn * 100
     }
 
     return {

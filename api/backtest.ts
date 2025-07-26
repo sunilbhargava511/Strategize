@@ -820,7 +820,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
           spyBenchmark: {
             name: 'SPY Benchmark',
-            finalValue: spyBenchmark.finalValue
+            finalValue: spyBenchmark.finalValue,
+            annualizedReturn: spyBenchmark.annualizedReturn
           }
         };
       })(),

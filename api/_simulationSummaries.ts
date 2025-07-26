@@ -28,6 +28,7 @@ export interface SimulationSummary {
     spyBenchmark?: {
       name: string;
       finalValue: number;
+      annualizedReturn?: number;
     };
   } | null;
   analysisDate?: string;
