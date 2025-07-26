@@ -415,7 +415,7 @@ export default function Home() {
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-white shadow-sm border-b">
-          <div className="container mx-auto px-4 py-4">
+          <div className="w-full px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="flex items-center justify-center">
@@ -494,8 +494,8 @@ export default function Home() {
           </div>
         </div>
         
-        <main className="container mx-auto px-4 py-8">
-          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[2fr_3fr]'}`}>
+        <main className="w-full px-4 py-8">
+          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[2fr_3fr]'} ${leftPanelCollapsed ? '' : 'max-w-[1920px] mx-auto'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card - Fidelity Style */}
