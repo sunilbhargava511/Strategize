@@ -418,8 +418,12 @@ export default function Home() {
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-green-600 rounded-xl flex items-center justify-center">
-                  <span className="text-xl font-bold text-white">Y</span>
+                <div className="w-12 h-12 flex items-center justify-center">
+                  <img 
+                    src="/yoda-logo.svg" 
+                    alt="Yoda Financial Advisor Logo" 
+                    className="w-12 h-12"
+                  />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Strategize Pro</h1>

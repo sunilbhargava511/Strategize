@@ -1,0 +1,28 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Yoda's head (green) -->
+  <circle cx="24" cy="18" r="12" fill="#4ade80" stroke="#166534" stroke-width="2"/>
+  
+  <!-- Yoda's ears -->
+  <ellipse cx="12" cy="15" rx="4" ry="8" fill="#4ade80" stroke="#166534" stroke-width="2"/>
+  <ellipse cx="36" cy="15" rx="4" ry="8" fill="#4ade80" stroke="#166534" stroke-width="2"/>
+  
+  <!-- Yoda's eyes (closed/wise) -->
+  <path d="M19 16 C19 16, 21 15, 21 17" stroke="#166534" stroke-width="2" fill="none"/>
+  <path d="M27 16 C27 16, 29 15, 29 17" stroke="#166534" stroke-width="2" fill="none"/>
+  
+  <!-- Yoda's mouth (small smile) -->
+  <path d="M22 22 Q24 24 26 22" stroke="#166534" stroke-width="2" fill="none"/>
+  
+  <!-- Business body/tie -->
+  <rect x="18" y="28" width="12" height="16" rx="2" fill="#4ade80" stroke="#166534" stroke-width="2"/>
+  <rect x="22" y="30" width="4" height="12" fill="#166534"/>
+  
+  <!-- Financial chart icon -->
+  <rect x="32" y="32" width="12" height="8" rx="1" fill="white" stroke="#166534" stroke-width="1"/>
+  <rect x="34" y="37" width="1.5" height="3" fill="#166534"/>
+  <rect x="36" y="36" width="1.5" height="4" fill="#166534"/>
+  <rect x="38" y="35" width="1.5" height="5" fill="#166534"/>
+  <rect x="40" y="34" width="1.5" height="6" fill="#166534"/>
+  <path d="M34 36 L36 35 L38 34 L40 33" stroke="#166534" stroke-width="1" fill="none"/>
+  <polygon points="39,32 42,32 40,34" fill="#166534"/>
+</svg>
