@@ -504,6 +504,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let processedTickers = finalValidTickers;
     const isLargePortfolioOptimized = false;
     
+    // Ensure SPY is included for benchmark calculation
+    if (!processedTickers.includes('SPY') && !processedTickers.includes('SPY.US')) {
+      processedTickers = [...processedTickers, 'SPY'];
+      logger.debug(`   📊 Adding SPY for benchmark calculation`);
+    }
+    
     overallTimings.validation = Date.now() - validationStart;
     logger.debug(`\n📊 PORTFOLIO SIZE ANALYSIS:`);
     logger.debug(`   📥 Submitted: ${tickers.length} tickers`);
@@ -695,12 +701,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           logger.debug(`\n🏛️  [5/5] CALCULATING: SPY Benchmark Strategy`);
           logger.debug(`     📋 Benchmark: SPY ETF only`);
           logger.debug(`     🏦 Type: Buy & Hold SPY`);
-          const result = await calculateStrategy(['SPY'], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
+          
+          // Check if SPY data is available
+          const spyTicker = historicalData['SPY'] ? 'SPY' : historicalData['SPY.US'] ? 'SPY.US' : null;
+          if (!spyTicker) {
+            logger.warn(`     ⚠️  SPY data not available in historical data`);
+            return null;
+          }
+          
+          const result = await calculateStrategy([spyTicker], startYear, endYear, initialInvestment, 'equalWeight', false, historicalData, availabilityData);
           logger.success(`     COMPLETED: SPY Benchmark - 1 ticker - Final value: ${formatCurrency(result.finalValue)}`);
           return result;
         })().catch(err => {
           logger.error('Error in spyBenchmark:', err);
-          throw err;
+          return null; // Return null instead of throwing
         })
       ]);
 
@@ -818,7 +832,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             name: worstStrategy.name,
             finalValue: worstStrategy.data.finalValue
           },
-          spyBenchmark: {
+          spyBenchmark: spyBenchmark ? {
             name: 'SPY Benchmark',
             finalValue: spyBenchmark.finalValue,
             annualizedReturn: spyBenchmark.annualizedReturn || (
@@ -827,7 +841,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 ? Math.pow(spyBenchmark.finalValue / initialInvestment, 1 / (endYear - startYear)) - 1
                 : (spyBenchmark.finalValue - initialInvestment) / initialInvestment
             )
-          }
+          } : undefined
         };
       })(),
       message: processedTickers.length > 10 ? 
