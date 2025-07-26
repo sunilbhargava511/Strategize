@@ -315,7 +315,7 @@ export default function HistoryBrowser() {
                   </div>
                   <ResultsDisplay 
                     results={selectedAnalysis.cachedData}
-                    isExpanded={true}
+                    simulationName={selectedAnalysis.customName || `${formatTickers(selectedAnalysis.tickers)} Analysis`}
                   />
                 </div>
               ) : (
