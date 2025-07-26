@@ -25,6 +25,10 @@ export interface SimulationSummary {
       name: string;
       finalValue: number;
     };
+    spyBenchmark?: {
+      name: string;
+      finalValue: number;
+    };
   } | null;
   analysisDate?: string;
 }

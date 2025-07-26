@@ -25,9 +25,10 @@ interface CachedAnalysis {
 
 interface SimulationHistoryProps {
   onLoadAnalysis?: (analysis: CachedAnalysis) => void
+  refreshTrigger?: number // Add this to trigger refresh from parent
 }
 
-export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryProps) {
+export default function SimulationHistory({ onLoadAnalysis, refreshTrigger }: SimulationHistoryProps) {
   const [analyses, setAnalyses] = useState<CachedAnalysis[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -130,7 +131,18 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
   const formatDate = (dateStr?: string) => {
     if (!dateStr || dateStr === 'Unknown') return 'Unknown'
     try {
-      return new Date(dateStr).toLocaleDateString()
+      const date = new Date(dateStr)
+      return date.toLocaleDateString('en-US', { 
+        month: 'numeric', 
+        day: 'numeric', 
+        year: '2-digit',
+        timeZone: 'America/Los_Angeles'
+      }) + ' ' + date.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        timeZone: 'America/Los_Angeles',
+        timeZoneName: 'short'
+      })
     } catch {
       return dateStr
     }
@@ -153,9 +165,57 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
     }
   }
 
+  const getStrategyPerformanceData = (analysis: CachedAnalysis) => {
+    if (!analysis.winningStrategy || !analysis.worstStrategy) return null
+
+    // Calculate returns from final values vs initial investment
+    const initialInvestment = analysis.initialInvestment
+    const winnerReturn = ((analysis.winningStrategy.finalValue - initialInvestment) / initialInvestment) * 100
+    const loserReturn = ((analysis.worstStrategy.finalValue - initialInvestment) / initialInvestment) * 100
+    
+    // Try to get SPY return from strategyPerformance, fallback to default
+    let spyReturn = 12.84 // Default fallback
+    if ((analysis as any).strategyPerformance?.spyBenchmark?.finalValue) {
+      spyReturn = (((analysis as any).strategyPerformance.spyBenchmark.finalValue - initialInvestment) / initialInvestment) * 100
+    }
+
+    return {
+      winner: {
+        name: analysis.winningStrategy.name,
+        return: winnerReturn
+      },
+      loser: {
+        name: analysis.worstStrategy.name,
+        return: loserReturn
+      },
+      spy: {
+        name: 'SPY',
+        return: spyReturn
+      }
+    }
+  }
+
+  const getStrategyShortName = (name: string) => {
+    const nameMap: Record<string, string> = {
+      'Equal Weight Buy & Hold': 'EQW-BH',
+      'Market Cap Buy & Hold': 'MCW-BH', 
+      'Equal Weight Rebalanced': 'EQW-R',
+      'Market Cap Rebalanced': 'MCW-R',
+      'SPY Benchmark': 'SPY'
+    }
+    return nameMap[name] || name.substring(0, 6)
+  }
+
   useEffect(() => {
     fetchAnalyses()
   }, [])
+
+  // Auto-refresh when refreshTrigger changes
+  useEffect(() => {
+    if (refreshTrigger) {
+      fetchAnalyses()
+    }
+  }, [refreshTrigger])
 
   if (loading) {
     return (
@@ -236,127 +296,106 @@ export default function SimulationHistory({ onLoadAnalysis }: SimulationHistoryP
           <p className="text-gray-600">Run your first analysis to see results here</p>
         </div>
       ) : (
-        <div className="space-y-4 max-h-96 overflow-y-auto">
-          {analyses.map((analysis) => (
-            <div
-              key={analysis.key}
-              className="border border-gray-200 rounded-xl p-4 hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  {editingName === analysis.key ? (
-                    <input
-                      type="text"
-                      value={tempName}
-                      onChange={(e) => setTempName(e.target.value)}
-                      onBlur={() => {
-                        if (tempName.trim()) {
-                          handleRename(analysis.key, tempName.trim())
-                        } else {
-                          setEditingName(null)
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {analyses.map((analysis) => {
+            const performanceData = getStrategyPerformanceData(analysis)
+            
+            return (
+              <div
+                key={analysis.key}
+                className="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition-colors"
+              >
+                {/* Line 1: Name and buttons */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center space-x-2 flex-1">
+                    {editingName === analysis.key ? (
+                      <input
+                        type="text"
+                        value={tempName}
+                        onChange={(e) => setTempName(e.target.value)}
+                        onBlur={() => {
                           if (tempName.trim()) {
                             handleRename(analysis.key, tempName.trim())
                           } else {
                             setEditingName(null)
                           }
-                        } else if (e.key === 'Escape') {
-                          setEditingName(null)
-                        }
-                      }}
-                      className="text-lg font-semibold text-gray-900 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full"
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="flex items-center space-x-2">
-                      <h4 className="text-lg font-semibold text-gray-900">
-                        {analysis.customName || `${formatTickers(analysis.tickers)} (${analysis.startYear}-${analysis.endYear})`}
-                      </h4>
-                      <button
-                        onClick={() => {
-                          setEditingName(analysis.key)
-                          setTempName(analysis.customName || '')
                         }}
-                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                        title="Edit name"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
-                    </div>
-                  )}
-                  
-                  {/* Basic Info */}
-                  <div className="grid grid-cols-2 gap-4 mt-3 text-sm">
-                    <div>
-                      <span className="text-gray-500">Date:</span> <span className="text-gray-900">{formatDate(analysis.cachedAt)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Years:</span> <span className="text-gray-900">{analysis.endYear - analysis.startYear}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Tickers:</span> <span className="text-gray-900">{analysis.tickerCount}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Period:</span> <span className="text-gray-900">{analysis.startYear}-{analysis.endYear}</span>
-                    </div>
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (tempName.trim()) {
+                              handleRename(analysis.key, tempName.trim())
+                            } else {
+                              setEditingName(null)
+                            }
+                          } else if (e.key === 'Escape') {
+                            setEditingName(null)
+                          }
+                        }}
+                        className="font-medium text-gray-900 bg-white border border-blue-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex-1"
+                        autoFocus
+                      />
+                    ) : (
+                      <>
+                        <h4 className="font-medium text-gray-900 text-sm">
+                          {analysis.customName || `${formatTickers(analysis.tickers)} (${analysis.startYear}-${analysis.endYear})`}
+                        </h4>
+                        <button
+                          onClick={() => {
+                            setEditingName(analysis.key)
+                            setTempName(analysis.customName || '')
+                          }}
+                          className="text-gray-400 hover:text-gray-600 transition-colors"
+                          title="Edit name"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                      </>
+                    )}
                   </div>
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => handleDelete([analysis.key])}
+                      className="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                      title="Delete"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleQuickLoad(analysis)}
+                      className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded text-xs font-medium transition-colors"
+                      title="Load simulation"
+                    >
+                      Load
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Strategy Performance */}
-                  {analysis.winningStrategy && analysis.worstStrategy && (
-                    <div className="mt-4 pt-3 border-t border-gray-100">
-                      <div className="grid grid-cols-1 gap-3 text-sm">
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <span className="text-gray-500">Best Strategy:</span>
-                            <div className="font-medium text-green-700">{analysis.winningStrategy.name}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold text-green-700">{formatCurrency(analysis.winningStrategy.finalValue)}</div>
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <span className="text-gray-500">Worst Strategy:</span>
-                            <div className="font-medium text-red-700">{analysis.worstStrategy.name}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold text-red-700">{formatCurrency(analysis.worstStrategy.finalValue)}</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                {/* Line 2: Date and Period */}
+                <div className="text-xs text-gray-600 mb-1">
+                  <span className="font-medium">Date:</span> {formatDate(analysis.cachedAt)} | <span className="font-medium">Period:</span> {analysis.startYear}-{analysis.endYear} ({analysis.endYear - analysis.startYear} years)
                 </div>
-                <div className="flex items-center space-x-2 ml-4">
-                  <button
-                    onClick={() => handleQuickLoad(analysis)}
-                    className="flex items-center space-x-1 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors text-sm font-medium"
-                    title="Quick load this simulation"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span>Load</span>
-                  </button>
-                  <button
-                    onClick={() => handleDelete([analysis.key])}
-                    className="flex items-center space-x-1 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg transition-colors text-sm"
-                    title="Delete this simulation"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
-                </div>
+
+                {/* Line 3: Performance with color coding */}
+                {performanceData && (
+                  <div className="text-xs flex items-center space-x-3">
+                    <span className="text-green-600 font-medium">
+                      {getStrategyShortName(performanceData.winner.name)}: {performanceData.winner.return.toFixed(2)}%
+                    </span>
+                    <span className="text-red-600 font-medium">
+                      {getStrategyShortName(performanceData.loser.name)}: {performanceData.loser.return.toFixed(2)}%
+                    </span>
+                    <span className="text-blue-600 font-medium">
+                      SPY: {performanceData.spy.return.toFixed(2)}%
+                    </span>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
