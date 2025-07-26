@@ -122,7 +122,7 @@ export default function HistoryBrowser() {
       : ((analysis.worstStrategy.finalValue - initialInvestment) / initialInvestment) * 100
     
     // Try to get SPY return from strategyPerformance, calculate annualized
-    let spyAnnualizedReturn = 12.84 // Default fallback
+    let spyAnnualizedReturn = null
     if ((analysis as any).strategyPerformance?.spyBenchmark?.finalValue) {
       spyAnnualizedReturn = years > 0
         ? (Math.pow((analysis as any).strategyPerformance.spyBenchmark.finalValue / initialInvestment, 1 / years) - 1) * 100
@@ -138,10 +138,10 @@ export default function HistoryBrowser() {
         name: analysis.worstStrategy.name,
         return: loserAnnualizedReturn
       },
-      spy: {
+      spy: spyAnnualizedReturn !== null ? {
         name: 'SPY',
         return: spyAnnualizedReturn
-      }
+      } : null
     }
   }
 
@@ -277,9 +277,11 @@ export default function HistoryBrowser() {
                           <span className="text-red-600 font-medium">
                             {getStrategyShortName(performanceData.loser.name)}: {performanceData.loser.return.toFixed(2)}%
                           </span>
-                          <span className="text-blue-600 font-medium">
-                            SPY: {performanceData.spy.return.toFixed(2)}%
-                          </span>
+                          {performanceData.spy && (
+                            <span className="text-blue-600 font-medium">
+                              SPY: {performanceData.spy.return.toFixed(2)}%
+                            </span>
+                          )}
                         </div>
                       )}
                       
