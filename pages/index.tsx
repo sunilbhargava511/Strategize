@@ -565,43 +565,12 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Cache Option - Fidelity Style */}
-                  <div className="border-t border-gray-200 pt-4">
-                    <h4 className="text-sm font-semibold text-gray-900 mb-3">Performance Options</h4>
-                    <label className="flex items-center space-x-3 cursor-pointer p-3 border border-gray-200 rounded-md hover:bg-gray-50">
-                      <input
-                        type="checkbox"
-                        checked={configuration.useCache}
-                        onChange={(e) => setConfiguration({...configuration, useCache: e.target.checked})}
-                        className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
-                      />
-                      <div>
-                        <span className="text-sm font-medium text-gray-900">Use Cached Data</span>
-                        <p className="text-xs text-gray-600">Faster analysis using pre-loaded market data</p>
-                      </div>
-                    </label>
-                  </div>
                 </div>
                 </div>
               </div>
 
-              {/* Ready to Analyze Card - Fidelity Style */}
-              <div className="bg-white border border-gray-200 shadow-sm">
-                {/* Fidelity-style Header */}
-                <div className="bg-gradient-to-r from-green-700 to-green-800 text-white px-6 py-4">
-                  <div className="flex items-center space-x-3">
-                    <svg className="w-6 h-6 text-green-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                    </svg>
-                    <h2 className="text-xl font-semibold tracking-wide">Execute Analysis</h2>
-                  </div>
-                </div>
-                
-                <div className="p-6">
-                  <div className="text-center">
-                    <p className="text-gray-600 mb-6">
-                      Run comprehensive portfolio analysis with multiple strategy comparisons
-                    </p>
+              {/* Run Analysis Button */}
+              <div className="text-center">
                     <button
                       onClick={handleRunAnalysis}
                       disabled={isRunning || detectedTickers.length === 0}
@@ -623,8 +592,6 @@ export default function Home() {
                         </>
                       )}
                     </button>
-                  </div>
-                </div>
               </div>
 
               {/* Simulation History */}
