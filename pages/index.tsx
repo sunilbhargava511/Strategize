@@ -495,7 +495,7 @@ export default function Home() {
         </div>
         
         <main className="container mx-auto px-4 py-8 max-w-7xl">
-          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2'}`}>
+          <div className={`grid gap-8 transition-all duration-300 ${leftPanelCollapsed ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-[2fr_3fr]'}`}>
             {/* Left Column - Setup */}
             <div className={`space-y-6 transition-all duration-300 ${leftPanelCollapsed ? 'hidden' : 'block'}`}>
               {/* Setup & Configuration Card - Fidelity Style */}
