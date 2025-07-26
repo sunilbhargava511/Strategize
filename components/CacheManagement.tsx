@@ -5,6 +5,7 @@ interface CacheStats {
   cacheStructure: string
   failedTickersCount: number
   tickersList?: string[]
+  backtestCount?: number
   failedTickers?: Array<{
     ticker: string
     error: string
@@ -77,6 +78,30 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
         tickersList: [],
         failedTickers: []
       })
+    } finally {
+      setCacheStatsLoading(false)
+    }
+  }
+
+  const rebuildCacheStats = async () => {
+    setCacheStatsLoading(true)
+    try {
+      const response = await fetch('/api/cache-rebuild-stats', {
+        method: 'POST'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Failed to rebuild cache stats: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      alert(data.message || 'Cache stats rebuilt successfully!')
+      
+      // Refresh the stats after rebuild
+      await fetchCacheStats()
+    } catch (error: any) {
+      console.error('Error rebuilding cache stats:', error)
+      alert(`Error rebuilding cache stats: ${error.message}`)
     } finally {
       setCacheStatsLoading(false)
     }
@@ -492,6 +517,16 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                   </svg>
                   <span>Refresh</span>
                 </button>
+                <button
+                  onClick={rebuildCacheStats}
+                  disabled={cacheStatsLoading}
+                  className="flex items-center space-x-1 px-3 py-1 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded text-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                  </svg>
+                  <span>Rebuild Stats</span>
+                </button>
               </div>
             </div>
 
@@ -505,10 +540,14 @@ export default function CacheManagement({ isOpen, onClose }: CacheManagementProp
                 <p>{cacheStatsError}</p>
               </div>
             ) : cacheStats ? (
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-gray-600">Unique Tickers:</span>
                   <span className="ml-2 font-semibold text-blue-600">{cacheStats.uniqueTickers || 0}</span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Saved Simulations:</span>
+                  <span className="ml-2 font-semibold text-purple-600">{cacheStats.backtestCount || 0}</span>
                 </div>
                 <div>
                   <span className="text-gray-600">Cache Structure:</span>
